@@ -90,4 +90,30 @@ if(VRDUMMY_BUILD_TESTS)
   target_compile_definitions(vrdummy_tests PRIVATE VRDUMMY_FIXTURE_DIR="${VRDUMMY_FIXTURE_DIR}")
   vrdummy_set_warnings(vrdummy_tests)
   add_test(NAME vrdummy_tests COMMAND vrdummy_tests)
+
+  # Loads the built driver DLL with fake OpenVR interfaces (no SteamVR).
+  add_executable(vrdummy_host_test tests/host/test_driver_host.cpp tests/host/fake_openvr.h)
+  target_include_directories(vrdummy_host_test PRIVATE src tests/host)
+  target_include_directories(vrdummy_host_test SYSTEM PRIVATE "${VRDUMMY_OPENVR_DIR}/headers" "${VRDUMMY_DOCTEST_DIR}")
+  target_link_libraries(vrdummy_host_test PRIVATE vrdummy_protocol)
+  target_compile_definitions(vrdummy_host_test PRIVATE
+    VRDUMMY_DRIVER_DLL="$<TARGET_FILE:driver_${VRDUMMY_DRIVER_NAME}>")
+  add_dependencies(vrdummy_host_test driver_${VRDUMMY_DRIVER_NAME})
+  vrdummy_set_warnings(vrdummy_host_test)
+  add_test(NAME vrdummy_host_test COMMAND vrdummy_host_test)
+  set_tests_properties(vrdummy_host_test PROPERTIES TIMEOUT 60)
+endif()
+
+# OpenVR client probe for integration tests against a running SteamVR.
+option(VRDUMMY_BUILD_PROBE "Build the OpenVR client probe" ON)
+if(VRDUMMY_BUILD_PROBE AND WIN32)
+  add_executable(vrdummy_probe tools/vrdummy_probe.cpp)
+  target_include_directories(vrdummy_probe SYSTEM PRIVATE "${VRDUMMY_OPENVR_DIR}/headers")
+  target_link_libraries(vrdummy_probe PRIVATE "${VRDUMMY_OPENVR_DIR}/lib/win64/openvr_api.lib")
+  vrdummy_set_warnings(vrdummy_probe)
+  add_custom_command(TARGET vrdummy_probe POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${VRDUMMY_OPENVR_DIR}/bin/win64/openvr_api.dll" "$<TARGET_FILE_DIR:vrdummy_probe>/openvr_api.dll"
+    COMMENT "Copying openvr_api.dll next to vrdummy_probe"
+  )
 endif()

@@ -73,7 +73,9 @@ void Log(LogLevel level, const char* format, ...) {
 
     char line[1100];
     snprintf(line, sizeof(line), "[%s] %s", LevelName(level), text);
-    if (vr::VRDriverLog() != nullptr) {
+    // The accessor dereferences the driver context; it is null before Init
+    // and after Cleanup.
+    if (vr::VRDriverContext() != nullptr && vr::VRDriverLog() != nullptr) {
         vr::VRDriverLog()->Log(line);
     }
     if (sink) sink(record);

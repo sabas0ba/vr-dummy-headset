@@ -1,51 +1,50 @@
-# 統合試験手順（SteamVR 実機）
+# 統合試験
 
-CI では実行しない．SteamVR がインストールされた Windows 機で手動実行する．
+## 1. SteamVR 非依存（CI で実行）
 
-## 前提
+`driver/tests/host/` のテストホストは vrserver の代わりに `driver_vrdummy.dll` を `LoadLibrary` し，
+`HmdDriverFactory` から得たプロバイダに OpenVR インターフェースのフェイク
+（`IVRServerDriverHost`，`IVRProperties`，`IVRDriverInput`，`IVRSettings`，`IVRDriverLog` 等）を
+注入する．その上で実際の名前付きパイプにクライアントとして接続し，次を検証する．
 
-- SteamVR が終了していること．
-- `scripts/build_driver.ps1` でドライバをビルド済みであること．
-- `cargo build --release`（`feeder/` 内）でフィーダをビルド済みであること．
+- デバイス登録（シリアル，クラス），プロパティ，入力コンポーネントの作成
+- フィーダ不在時のポーズ送出（HMD は有効，トラッカーは追跡外）
+- ハンドシェイク，ログ転送，ポーズ・入力・表示パラメータの反映
+- 切断時の挙動と再接続
 
-## 手順
+実行: `ctest --preset msvc-x64`（`vrdummy_host_test`）．
 
-1. ドライバを登録する．
+フィーダ側は `feeder/crates/core/tests/driver_pipe.rs` がモックドライバに対して
+同じプロトコルを検証する（`cargo test --workspace`）．
 
-   ```powershell
-   .\scripts\install_driver.ps1
-   ```
+## 2. SteamVR 実機（手動）
 
-2. SteamVR を起動する．仮想 HMD により SteamVR が「待機中」ではなく起動完了になること，
-   コントローラ 2 台とトラッカー 3 台（既定）がアイコンに現れることを確認する．
-   フィーダ未接続のため，HMD 以外は追跡外（点滅）表示になる．
+前提: SteamVR がインストールされ，Steam クライアントが起動していること．
+ドライバ（`scripts/build_driver.ps1`）とフィーダ（`cargo build --release`）をビルド済みであること．
 
-3. フィーダを起動する．
+```powershell
+.\scripts\integration\steamvr_check.ps1
+```
 
-   ```powershell
-   .\feeder\target\release\vrdummy-cli.exe run
-   ```
+スクリプトは次を行い，期待値の一致を PASS / FAIL で表示する．
 
-   SteamVR の Web コンソール（開発者設定）で `vrdummy:` を検索し，
-   `feeder handshake complete` が出ていることを確認する．
+1. `vrpathreg adddriver` でドライバを登録
+2. SteamVR を起動し，`vrdummy_probe wait VRDUMMY-HMD-0` で仮想 HMD の出現を待つ
+3. `vrdummy_probe list` でコントローラ 2 台とトラッカーを確認
+4. `vrdummy-cli run --no-stdin` を常駐させ，制御パイプ経由で位置を設定
+5. `vrdummy_probe expect <serial> x y z` で OpenVR クライアントから見た位置を照合
+6. フィーダ終了後にトラッカーが追跡外になることを確認
+7. SteamVR を終了し，登録を解除（`-KeepRunning` で省略）
 
-4. ポーズと入力を送る．
+`vrdummy_probe` は `VRApplication_Background` で初期化するため，SteamVR が起動していない
+状態では失敗する．
 
-   ```powershell
-   .\feeder\target\release\vrdummy-cli.exe set hmd pos 0 1.7 0
-   .\feeder\target\release\vrdummy-cli.exe set ctrl-r button a 1
-   ```
+### 手動確認の補助
 
-   SteamVR の VR ビュー（メニューから「VR ビューを表示」）で視点が変わること，
-   コントローラのバインディング画面で入力が反応することを確認する．
+```powershell
+.\driver\build\msvc-x64\Release\vrdummy_probe.exe list
+.\driver\build\msvc-x64\Release\vrdummy_probe.exe pose VRDUMMY-TRK-3
+.\feeder\target\release\vrdummy-cli.exe set euler hmd 30 0 0
+```
 
-5. 終了後，登録を解除する．
-
-   ```powershell
-   .\scripts\uninstall_driver.ps1
-   ```
-
-## 期待値の自動比較（今後）
-
-`openvr_api` をリンクした小さなクライアントツールで
-`IVRSystem::GetDeviceToAbsoluteTrackingPose` を読み取り，シナリオの期待値と比較する．
+SteamVR の VR ビュー（メニュー →「VR ビューを表示」）で視点の変化と左右の映像を確認できる．
