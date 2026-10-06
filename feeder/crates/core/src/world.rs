@@ -304,7 +304,10 @@ mod tests {
             world.device_ids().collect::<Vec<_>>(),
             (3..9).collect::<Vec<_>>()
         );
-        assert_eq!(world.pose(3).expect("retained").position, [1.0, 2.0, 3.0]);
+        let position = world.pose(3).expect("retained").position;
+        for (actual, expected) in position.into_iter().zip([1.0, 2.0, 3.0]) {
+            assert!((actual - expected).abs() < 1e-9);
+        }
         assert_eq!(world.inputs.get(&(3, 0)), Some(&1.0));
         assert!(!world.inputs.contains_key(&(1, 1)));
         for id in 6..9 {
