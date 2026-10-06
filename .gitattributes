@@ -1,0 +1,11 @@
+# Normalise line endings so that checkouts are identical across machines.
+* text=auto eol=lf
+
+# Windows scripts keep CRLF for PowerShell 5.1 compatibility.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+# Binary fixtures and images.
+*.bin binary
+*.png binary
+*.svg text

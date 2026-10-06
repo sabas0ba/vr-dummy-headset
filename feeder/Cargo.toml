@@ -26,3 +26,10 @@ must_use_candidate = "allow"
 missing_errors_doc = "allow"
 # Product names (SteamVR, VRChat, OpenVR) appear throughout the documentation.
 doc_markdown = "allow"
+# Numeric conversions between f32/f64/u32 are intrinsic to pose and wire handling.
+cast_precision_loss = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+too_many_lines = "allow"
+similar_names = "allow"
