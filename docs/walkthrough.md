@@ -131,6 +131,9 @@ A ボタン点灯（緑）が見える．このとき GUI 側で非対称投影�
 
 ## 6. VRChat での利用
 
+注意: 実機の HMD（PICO 4 など）を使う日はダミードライバの登録を解除する．併用する場合は
+トラッカーのみの構成にする（README「実機 HMD と併用するときの注意」）．
+
 1. `install_driver.ps1` でドライバを登録し，SteamVR を起動する．初回のみ `vrdummy_probe chaperone` を実行する．
 2. `vrdummy-gui` または `vrdummy-cli run` を起動する（制御パイプを提供）．
 3. VRChat を起動する．`vrdummy_controller` 用の既定バインディングがドライバに同梱されているため，

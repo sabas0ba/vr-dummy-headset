@@ -19,7 +19,9 @@
 
 ## 2. SteamVR 実機 E2E（手動）
 
-前提: SteamVR がインストールされ，Steam クライアントが起動していること．
+前提: SteamVR がインストールされ，Steam クライアントが起動していること．**実機の HMD
+（PICO 4 など）は接続・起動していないこと**（HMD の競合とシャペロン上書きを避けるため．
+README の「実機 HMD と併用するときの注意」を参照）．
 ドライバ（`scripts/build_driver.ps1`）とフィーダ（`cargo build --release`）をビルド済みであること．
 
 ```powershell

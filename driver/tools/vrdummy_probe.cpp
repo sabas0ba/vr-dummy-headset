@@ -5,8 +5,11 @@
 //   vrdummy_probe expect <serial> x y z [tol]  exit 0 if the device is tracking
 //                                            within tol (default 0.01 m)
 //   vrdummy_probe wait <serial> [timeout_s]  wait until the device exists
-//   vrdummy_probe chaperone [size_m]         set standing/seated origin = raw
-//                                            origin and a square play area
+//   vrdummy_probe chaperone [size_m] [--force]
+//                                            set standing/seated origin = raw
+//                                            origin and a square play area;
+//                                            only while the vrdummy HMD is
+//                                            active unless --force is given
 //   vrdummy_probe chaperone-state            print calibration state and area
 //
 // Runs as a background application, so SteamVR must already be running.
@@ -124,7 +127,7 @@ struct Session {
 int Usage() {
     std::fprintf(stderr,
                  "usage: vrdummy_probe list | pose <serial> | expect <serial> x y z [tol] | wait <serial> [timeout_s]\n"
-                 "       vrdummy_probe chaperone [size_m] | chaperone-state\n");
+                 "       vrdummy_probe chaperone [size_m] [--force] | chaperone-state\n");
     return 2;
 }
 
@@ -154,8 +157,13 @@ int main(int argc, char** argv) {
     if (!s.Init()) return 1;
 
     if (cmd == "chaperone") {
-        const float size = argc >= 3 ? static_cast<float>(std::atof(argv[2])) : 3.0f;
-        if (!vrscene::SetupChaperoneIdentity(size)) {
+        float size = 3.0f;
+        bool force = false;
+        for (int i = 2; i < argc; ++i) {
+            if (std::strcmp(argv[i], "--force") == 0) force = true;
+            else size = static_cast<float>(std::atof(argv[i]));
+        }
+        if (!vrscene::SetupChaperoneIdentity(size, force)) {
             std::fprintf(stderr, "chaperone commit failed\n");
             return 1;
         }

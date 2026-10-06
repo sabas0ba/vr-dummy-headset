@@ -17,6 +17,22 @@
 standing 空間とプレイエリアが保持され，「ルームセットアップを実行してください」の通知も出ない．
 ID を変えると別のユニバースとして扱われ，再度コミットが必要になる．
 
+### 実機 HMD との共存
+
+実機（PICO 4 など）のストリーミングドライバは独自のユニバース ID を報告するため，設定は
+`chaperone_info.vrchap` 内で別エントリになり，通常は互いに干渉しない．ただしシャペロンを
+書き込むツール（`vrdummy_probe chaperone`，`vrdummy_e2e`，`vrdummy_viewer`）は「アクティブな
+HMD のユニバース」に書き込むので，実機がアクティブな状態で実行すると実機のルームセットアップを
+上書きする．これを防ぐため，各ツールはアクティブな HMD の `Prop_CurrentUniverseId_Uint64` が
+ダミーの ID と一致しない限り書き込みを拒否する（`vrdummy_probe chaperone --force` で強制）．
+`steamvr_e2e.ps1` は実行前に `Steam/config/chaperone_info.vrchap` を
+`.tmp/chaperone-backup/` に複製するので，必要ならそこから手で戻せる．
+
+実機と併用してトラッカーだけを使う場合（`hmd_enable: false`）はダミーの HMD が存在せず
+ユニバース ID も設定されないため，standing 原点は実機のルームセットアップに従う．フィーダの
+`pos` は raw 空間の値なので，実機の standing 原点が raw からずれているぶん，アプリから見た位置は
+ずれる．`vrdummy_probe chaperone-state` で standing 原点の raw からのオフセットを確認できる．
+
 フィーダのコマンド（`pos`，`rot`，`euler`，プリセット）はすべてドライバ空間の値である．
 
 ## 2. 軸と向き

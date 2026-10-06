@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -112,10 +113,37 @@ inline std::string StringProp(vr::IVRSystem* sys, uint32_t index, vr::ETrackedDe
     return err == vr::TrackedProp_Success ? buf : "";
 }
 
+// Tracking universe id reported by driver_vrdummy's HMD (default.vrsettings
+// universe_id). Chaperone data is stored per universe, so writing it while
+// another headset is active would overwrite that headset's room setup.
+constexpr uint64_t kDummyUniverseId = 0x5652444D;
+
+// Universe id of the active HMD, 0 when unavailable.
+inline uint64_t ActiveHmdUniverse() {
+    auto* sys = vr::VRSystem();
+    if (!sys) return 0;
+    vr::ETrackedPropertyError err = vr::TrackedProp_Success;
+    const uint64_t id = sys->GetUint64TrackedDeviceProperty(vr::k_unTrackedDeviceIndex_Hmd, vr::Prop_CurrentUniverseId_Uint64, &err);
+    return err == vr::TrackedProp_Success ? id : 0;
+}
+
+// Whether the active HMD is the virtual one.
+inline bool IsDummyHmdActive() { return ActiveHmdUniverse() == kDummyUniverseId; }
+
 // Makes the standing and seated universes coincide with the raw tracking
 // space and defines a square play area (docs/coordinates.md). SteamVR
 // persists the result under the driver's universe id.
-inline bool SetupChaperoneIdentity(float size_m = 3.0f) {
+//
+// Refuses to write unless the active HMD is driver_vrdummy's, so that a real
+// headset's room setup is never replaced by accident. `force` overrides.
+inline bool SetupChaperoneIdentity(float size_m = 3.0f, bool force = false) {
+    if (!force && !IsDummyHmdActive()) {
+        std::fprintf(stderr,
+                     "chaperone: active HMD universe %llu is not the vrdummy universe %llu; "
+                     "refusing to overwrite another headset's room setup (use --force to override)\n",
+                     static_cast<unsigned long long>(ActiveHmdUniverse()), static_cast<unsigned long long>(kDummyUniverseId));
+        return false;
+    }
     auto* setup = vr::VRChaperoneSetup();
     if (!setup) return false;
     setup->RevertWorkingCopy();

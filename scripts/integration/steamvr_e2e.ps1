@@ -59,6 +59,22 @@ $feederLog = Join-Path $env:TEMP "vrdummy-feeder-e2e.log"
 $feederProc = $null
 
 try {
+    Step "back up chaperone settings" {
+        # SteamVR stores room setup per universe id; the tools below only write
+        # the vrdummy universe, but a copy is kept so that any real headset's
+        # room setup can be restored by hand (docs/coordinates.md).
+        $chaperone = Join-Path (Split-Path $SteamVRDir -Parent | Split-Path -Parent | Split-Path -Parent) "config\chaperone_info.vrchap"
+        if (Test-Path $chaperone) {
+            $backupDir = Join-Path $PSScriptRoot "..\..\.tmp\chaperone-backup"
+            New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+            $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+            Copy-Item $chaperone (Join-Path $backupDir "chaperone_info-$stamp.vrchap")
+            Write-Host "  copied $chaperone to $backupDir"
+        } else {
+            Write-Host "  no chaperone_info.vrchap found at $chaperone"
+        }
+    }
+
     Step "register driver" {
         & $vrpathreg adddriver $DriverDir | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "vrpathreg adddriver failed" }

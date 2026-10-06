@@ -10,6 +10,26 @@ SteamVR から認識される仮想デバイス一式（HMD，左右コントロ
 - 試験方針: [docs/testing.md](docs/testing.md)
 - 統合試験と E2E: [scripts/integration/README.md](scripts/integration/README.md)
 
+## 実機 HMD（PICO 4 など）と併用するときの注意
+
+ダミードライバは常時「HMD あり」を宣言するため，登録したまま実機の HMD を使うと HMD が
+二重になり，どちらが採用されるかは起動順に依存する．
+
+- **実機を使う日は登録を解除する**: `.\scripts\uninstall_driver.ps1`，または SteamVR の
+  設定 → スタートアップ/シャットダウン → アドオンの管理 → vrdummy をオフ．
+- **実機と併用してトラッカーだけ試す場合**: `driver/resources/settings/default.vrsettings` で
+  `hmd_enable: false`，`controllers_enable: false` にする．この構成ではユニバース ID を
+  設定しないため，シャペロン（ルームセットアップ）にも影響しない．
+- **シャペロンの書き込み**: `vrdummy_probe chaperone`，`vrdummy_e2e`，`vrdummy_viewer` は
+  standing 原点 = raw 原点・3 m × 3 m をアクティブな HMD のユニバースに書き込む．実機の
+  ルームセットアップを上書きしないよう，アクティブな HMD がダミー（ユニバース ID
+  0x5652444D）でなければ拒否する（`--force` で強制）．`steamvr_e2e.ps1` は実行前に
+  `Steam/config/chaperone_info.vrchap` を `.tmp/chaperone-backup/` に複製する．
+- VRChat 向け既定バインディングは `vrdummy_controller` にのみ適用され，実機のコントローラの
+  バインディングには干渉しない．
+
+詳細は [docs/coordinates.md](docs/coordinates.md) を参照．
+
 ## 構成
 
 ```
