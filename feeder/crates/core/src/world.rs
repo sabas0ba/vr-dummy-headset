@@ -51,6 +51,27 @@ pub fn quat_to_euler_deg(q: Quat) -> [f64; 3] {
     [yaw, pitch, roll]
 }
 
+/// Rotates a vector by a unit quaternion (w, x, y, z).
+pub fn quat_rotate(q: Quat, v: [f64; 3]) -> [f64; 3] {
+    let [qw, qx, qy, qz] = q;
+    // v' = v + 2 qw (axis x v) + 2 (axis x (axis x v)) with axis = (qx, qy, qz)
+    let cross = |a: [f64; 3], b: [f64; 3]| {
+        [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+    };
+    let axis = [qx, qy, qz];
+    let uv = cross(axis, v);
+    let uuv = cross(axis, uv);
+    [
+        v[0] + 2.0 * (qw * uv[0] + uuv[0]),
+        v[1] + 2.0 * (qw * uv[1] + uuv[1]),
+        v[2] + 2.0 * (qw * uv[2] + uuv[2]),
+    ]
+}
+
 /// Normalises a quaternion; identity if the norm is zero.
 pub fn quat_normalize(q: Quat) -> Quat {
     let n = (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]).sqrt();
@@ -213,6 +234,17 @@ mod tests {
         let q = quat_from_euler_deg(90.0, 0.0, 0.0);
         let s = std::f64::consts::FRAC_1_SQRT_2;
         assert!(approx(q, [s, 0.0, s, 0.0]));
+    }
+
+    #[test]
+    fn rotate_forward_by_yaw() {
+        // Yaw +90 turns -Z (forward) into -X (left).
+        let q = quat_from_euler_deg(90.0, 0.0, 0.0);
+        let v = quat_rotate(q, [0.0, 0.0, -1.0]);
+        assert!(
+            (v[0] + 1.0).abs() < 1e-9 && v[1].abs() < 1e-9 && v[2].abs() < 1e-9,
+            "{v:?}"
+        );
     }
 
     #[test]

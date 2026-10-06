@@ -1,16 +1,23 @@
 //! Graphical front end of the vrdummy feeder (eframe/egui).
 //!
-//! Every widget change is turned into a text command and executed through the
-//! shared engine, so the GUI, the CLI and the control pipe stay equivalent.
+//! Layout: device list and editor on the left, a 3D view of the body in the
+//! middle, display parameters, recording and the console on the right.
+//! Every widget change is turned into a text command and executed through
+//! the shared engine, so the GUI, the CLI and the control pipe stay
+//! equivalent. Widget values are read back from the engine's world every
+//! frame, so changes made elsewhere are shown.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod view3d;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use eframe::egui;
-use vrdummy_core::command::controller_component_names;
+use eframe::egui::{self, Color32, RichText};
+use view3d::{Selection, View3d, device_label};
+use vrdummy_core::command::{controller_component_is_scalar, controller_component_names};
 use vrdummy_core::control::{ControlServer, SharedEngine};
 use vrdummy_core::engine::Reply;
 use vrdummy_core::world::quat_to_euler_deg;
@@ -19,168 +26,30 @@ use vrdummy_protocol::{controller_components, device_ids};
 
 const DRAG_SPEED: f64 = 0.005;
 
-struct Vec3Widget {
-    name: &'static str,
-    device: &'static str,
-    value: [f64; 3],
+fn is_controller(id: u16) -> bool {
+    id == device_ids::CONTROLLER_LEFT || id == device_ids::CONTROLLER_RIGHT
 }
 
-impl Vec3Widget {
-    fn new(name: &'static str, device: &'static str, value: [f64; 3]) -> Self {
-        Self {
-            name,
-            device,
-            value,
-        }
-    }
-
-    /// Draws the three drag values; returns a command when any changed.
-    fn show(&mut self, ui: &mut egui::Ui) -> Option<String> {
-        let mut changed = false;
-        ui.horizontal(|ui| {
-            ui.label(self.name);
-            for (axis, v) in ["x", "y", "z"].iter().zip(self.value.iter_mut()) {
-                ui.label(*axis);
-                changed |= ui
-                    .add(egui::DragValue::new(v).speed(DRAG_SPEED).fixed_decimals(3))
-                    .changed();
-            }
-        });
-        changed.then(|| {
-            format!(
-                "pos {} {} {} {}",
-                self.device, self.value[0], self.value[1], self.value[2]
-            )
-        })
-    }
-}
-
-struct EulerWidget {
-    device: &'static str,
-    value: [f64; 3],
-}
-
-impl EulerWidget {
-    fn show(&mut self, ui: &mut egui::Ui) -> Option<String> {
-        let mut changed = false;
-        ui.horizontal(|ui| {
-            ui.label("euler");
-            for (axis, v) in ["yaw", "pitch", "roll"].iter().zip(self.value.iter_mut()) {
-                ui.label(*axis);
-                changed |= ui
-                    .add(egui::DragValue::new(v).speed(0.5).suffix("°"))
-                    .changed();
-            }
-        });
-        changed.then(|| {
-            format!(
-                "euler {} {} {} {}",
-                self.device, self.value[0], self.value[1], self.value[2]
-            )
-        })
-    }
-}
-
-struct ControllerPanel {
-    device: &'static str,
-    position: Vec3Widget,
-    euler: EulerWidget,
+/// State of the selected device as shown in the editor.
+#[derive(Default)]
+struct DeviceEditor {
+    position: [f64; 3],
+    euler: [f64; 3],
+    valid: bool,
     buttons: Vec<(&'static str, u16, bool)>,
     joystick: [f32; 2],
     trigger: f32,
     grip: f32,
 }
 
-impl ControllerPanel {
-    fn new(device: &'static str, position: [f64; 3]) -> Self {
-        let buttons = controller_component_names()
-            .filter(|(_, id)| !vrdummy_core::command::controller_component_is_scalar(*id))
-            .map(|(name, id)| (name, id, false))
-            .collect();
-        Self {
-            device,
-            position: Vec3Widget::new("pos", device, position),
-            euler: EulerWidget {
-                device,
-                value: [0.0; 3],
-            },
-            buttons,
-            joystick: [0.0; 2],
-            trigger: 0.0,
-            grip: 0.0,
-        }
-    }
-
-    fn show(&mut self, ui: &mut egui::Ui, out: &mut Vec<String>) {
-        out.extend(self.position.show(ui));
-        out.extend(self.euler.show(ui));
-        ui.horizontal_wrapped(|ui| {
-            for (name, _, state) in &mut self.buttons {
-                if ui.toggle_value(state, *name).changed() {
-                    out.push(format!(
-                        "input {} {} {}",
-                        self.device,
-                        name,
-                        u8::from(*state)
-                    ));
-                }
-            }
-        });
-        ui.horizontal(|ui| {
-            ui.label("joystick");
-            let mut changed = false;
-            changed |= ui
-                .add(egui::Slider::new(&mut self.joystick[0], -1.0..=1.0).text("x"))
-                .changed();
-            changed |= ui
-                .add(egui::Slider::new(&mut self.joystick[1], -1.0..=1.0).text("y"))
-                .changed();
-            if changed {
-                out.push(format!(
-                    "input {} joystick/x {}",
-                    self.device, self.joystick[0]
-                ));
-                out.push(format!(
-                    "input {} joystick/y {}",
-                    self.device, self.joystick[1]
-                ));
-            }
-            if ui.button("center").clicked() {
-                self.joystick = [0.0; 2];
-                out.push(format!("input {} joystick/x 0", self.device));
-                out.push(format!("input {} joystick/y 0", self.device));
-            }
-        });
-        ui.horizontal(|ui| {
-            if ui
-                .add(egui::Slider::new(&mut self.trigger, 0.0..=1.0).text("trigger"))
-                .changed()
-            {
-                out.push(format!(
-                    "input {} trigger/value {}",
-                    self.device, self.trigger
-                ));
-            }
-            if ui
-                .add(egui::Slider::new(&mut self.grip, 0.0..=1.0).text("grip"))
-                .changed()
-            {
-                out.push(format!("input {} grip/value {}", self.device, self.grip));
-            }
-        });
-    }
-}
-
 struct App {
     engine: SharedEngine,
     _control: Option<ControlServer>,
     quit: Arc<AtomicBool>,
-    hmd_position: Vec3Widget,
-    hmd_euler: EulerWidget,
-    left: ControllerPanel,
-    right: ControllerPanel,
-    trackers: Vec<Vec3Widget>,
-    tracker_names: Vec<String>,
+    selected: u16,
+    device_ids: Vec<u16>,
+    editor: DeviceEditor,
+    view: View3d,
     ipd_mm: f32,
     projection: [[f32; 4]; 2],
     swap_eyes: bool,
@@ -193,51 +62,32 @@ struct App {
 
 impl App {
     fn new(engine: SharedEngine, control: Option<ControlServer>, quit: Arc<AtomicBool>) -> Self {
-        let (hmd, left, right, trackers, ipd) = {
-            let e = engine.lock().expect("engine lock");
-            let w = e.world();
-            let pos = |id: u16| w.pose(id).map_or([0.0; 3], |p| p.position);
-            let trackers: Vec<[f64; 3]> = w
-                .device_ids()
-                .filter(|id| *id >= device_ids::TRACKER_BASE)
-                .map(pos)
-                .collect();
-            (
-                pos(device_ids::HMD),
-                pos(device_ids::CONTROLLER_LEFT),
-                pos(device_ids::CONTROLLER_RIGHT),
-                trackers,
-                w.display.ipd_m,
-            )
-        };
-        let tracker_names: Vec<String> = (0..trackers.len()).map(|i| format!("trk{i}")).collect();
-        let tracker_widgets = tracker_names
-            .iter()
-            .zip(trackers)
-            .map(|(name, p)| Vec3Widget::new("pos", Box::leak(name.clone().into_boxed_str()), p))
+        let buttons = controller_component_names()
+            .filter(|(_, id)| !controller_component_is_scalar(*id))
+            .map(|(name, id)| (name, id, false))
             .collect();
-        Self {
+        let mut app = Self {
             engine,
             _control: control,
             quit,
-            hmd_position: Vec3Widget::new("pos", "hmd", hmd),
-            hmd_euler: EulerWidget {
-                device: "hmd",
-                value: [0.0; 3],
+            selected: device_ids::HMD,
+            device_ids: Vec::new(),
+            editor: DeviceEditor {
+                buttons,
+                ..DeviceEditor::default()
             },
-            left: ControllerPanel::new("ctrl-l", left),
-            right: ControllerPanel::new("ctrl-r", right),
-            trackers: tracker_widgets,
-            tracker_names,
-            ipd_mm: ipd * 1000.0,
-            projection: [[-1.0, 1.0, -1.0, 1.0], [-1.0, 1.0, -1.0, 1.0]],
+            view: View3d::default(),
+            ipd_mm: 64.0,
+            projection: [[-1.0, 1.0, -1.0, 1.0]; 2],
             swap_eyes: false,
             preset_height: presets::DEFAULT_HEIGHT_M,
             command_line: String::new(),
             output: Vec::new(),
             record_path: "vrdummy-recording.txt".to_owned(),
             recording: false,
-        }
+        };
+        app.refresh_from_world();
+        app
     }
 
     fn execute(&mut self, line: &str) {
@@ -264,64 +114,195 @@ impl App {
         }
     }
 
-    fn display_commands(&self) -> String {
-        let [l, r] = self.projection;
-        format!(
-            "proj {} {} {} {} {} {} {} {}",
-            l[0], l[1], l[2], l[3], r[0], r[1], r[2], r[3]
-        )
+    /// Copies the engine's world into the editor and display widgets.
+    fn refresh_from_world(&mut self) {
+        let e = self.engine.lock().expect("engine lock");
+        let w = e.world();
+        self.device_ids = w.device_ids().collect();
+        if let Some(p) = w.pose(self.selected) {
+            self.editor.position = p.position;
+            self.editor.euler = quat_to_euler_deg(p.rotation);
+            self.editor.valid = p.flags.pose_valid();
+        }
+        if is_controller(self.selected) {
+            let id = self.selected;
+            let input = |component: u16| w.inputs.get(&(id, component)).copied().unwrap_or(0.0);
+            for (_, component, state) in &mut self.editor.buttons {
+                *state = input(*component) != 0.0;
+            }
+            self.editor.joystick = [
+                input(controller_components::JOYSTICK_X),
+                input(controller_components::JOYSTICK_Y),
+            ];
+            self.editor.trigger = input(controller_components::TRIGGER_VALUE);
+            self.editor.grip = input(controller_components::GRIP_VALUE);
+        }
+        self.ipd_mm = w.display.ipd_m * 1000.0;
+        self.projection = [w.display.projection_left, w.display.projection_right];
+        self.swap_eyes = w.display.swap_eyes;
     }
 
-    fn show_connection(&mut self, ui: &mut egui::Ui) {
+    // ---- panels -------------------------------------------------------
+
+    fn show_status_bar(&mut self, ui: &mut egui::Ui) {
         let (connected, devices, status) = {
             let e = self.engine.lock().expect("engine lock");
             (e.connected(), e.driver_devices().to_vec(), e.status_line())
         };
         ui.horizontal(|ui| {
             let (color, text) = if connected {
-                (egui::Color32::from_rgb(0x2e, 0xa0, 0x43), "connected")
+                (Color32::from_rgb(0x2e, 0xa0, 0x43), "driver connected")
             } else {
-                (egui::Color32::from_rgb(0xc0, 0x39, 0x2b), "disconnected")
+                (Color32::from_rgb(0xc0, 0x39, 0x2b), "driver disconnected")
             };
             ui.colored_label(color, text);
-            if ui.button("sync").clicked() {
+            if ui.small_button("sync").clicked() {
                 self.execute("sync");
             }
+            ui.separator();
+            ui.small(status);
+            if !devices.is_empty() {
+                ui.separator();
+                ui.menu_button("driver devices", |ui| {
+                    for d in &devices {
+                        ui.monospace(format!(
+                            "{:>2} {:?} {}",
+                            d.device_id, d.device_class, d.serial
+                        ));
+                    }
+                });
+            }
         });
-        ui.small(status);
-        if !devices.is_empty() {
-            ui.collapsing("driver devices", |ui| {
-                for d in &devices {
-                    ui.monospace(format!(
-                        "{:>2} {:?} {}",
-                        d.device_id, d.device_class, d.serial
-                    ));
-                }
-            });
+    }
+
+    fn show_device_list(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Devices");
+        let valid_ids: Vec<(u16, bool)> = {
+            let e = self.engine.lock().expect("engine lock");
+            let w = e.world();
+            self.device_ids
+                .iter()
+                .map(|id| (*id, w.pose(*id).is_some_and(|p| p.flags.pose_valid())))
+                .collect()
+        };
+        for (id, valid) in valid_ids {
+            let label = device_label(id);
+            let text = if valid {
+                RichText::new(label)
+            } else {
+                RichText::new(format!("{label}  (lost)")).color(Color32::from_gray(130))
+            };
+            if ui.selectable_label(self.selected == id, text).clicked() {
+                self.selected = id;
+            }
         }
     }
 
-    fn show_devices(&mut self, ui: &mut egui::Ui) {
+    fn show_editor(&mut self, ui: &mut egui::Ui) {
+        let dev = device_label(self.selected);
+        ui.heading(format!("Edit: {dev}"));
         let mut cmds = Vec::new();
-        ui.heading("HMD");
-        cmds.extend(self.hmd_position.show(ui));
-        cmds.extend(self.hmd_euler.show(ui));
-        ui.separator();
-        ui.heading("Left controller");
-        self.left.show(ui, &mut cmds);
-        ui.separator();
-        ui.heading("Right controller");
-        self.right.show(ui, &mut cmds);
-        ui.separator();
-        ui.heading("Trackers");
-        for (name, w) in self.tracker_names.iter().zip(self.trackers.iter_mut()) {
-            ui.horizontal(|ui| {
-                ui.label(name);
-                cmds.extend(w.show(ui));
+
+        egui::Grid::new("pose_grid")
+            .num_columns(4)
+            .spacing([6.0, 4.0])
+            .show(ui, |ui| {
+                ui.label("pos [m]");
+                let mut changed = false;
+                for v in &mut self.editor.position {
+                    changed |= ui
+                        .add(egui::DragValue::new(v).speed(DRAG_SPEED).fixed_decimals(3))
+                        .changed();
+                }
+                if changed {
+                    let p = self.editor.position;
+                    cmds.push(format!("pos {dev} {} {} {}", p[0], p[1], p[2]));
+                }
+                ui.end_row();
+                ui.label("euler [°]");
+                let mut changed = false;
+                for v in &mut self.editor.euler {
+                    changed |= ui
+                        .add(egui::DragValue::new(v).speed(0.5).fixed_decimals(1))
+                        .changed();
+                }
+                if changed {
+                    let e = self.editor.euler;
+                    cmds.push(format!("euler {dev} {} {} {}", e[0], e[1], e[2]));
+                }
+                ui.end_row();
             });
+        ui.horizontal(|ui| {
+            ui.small("yaw / pitch / roll");
+            if ui
+                .checkbox(&mut self.editor.valid, "tracking valid")
+                .changed()
+            {
+                cmds.push(format!("valid {dev} {}", u8::from(self.editor.valid)));
+            }
+            if ui.small_button("reset rotation").clicked() {
+                cmds.push(format!("euler {dev} 0 0 0"));
+            }
+        });
+
+        if is_controller(self.selected) {
+            ui.add_space(6.0);
+            ui.label(RichText::new("Buttons").strong());
+            egui::Grid::new("buttons")
+                .num_columns(3)
+                .spacing([6.0, 4.0])
+                .show(ui, |ui| {
+                    for (i, (name, _, state)) in self.editor.buttons.iter_mut().enumerate() {
+                        if ui.toggle_value(state, *name).changed() {
+                            cmds.push(format!("input {dev} {name} {}", u8::from(*state)));
+                        }
+                        if i % 3 == 2 {
+                            ui.end_row();
+                        }
+                    }
+                });
+            ui.add_space(6.0);
+            ui.label(RichText::new("Analog").strong());
+            if ui
+                .add(egui::Slider::new(&mut self.editor.trigger, 0.0..=1.0).text("trigger"))
+                .changed()
+            {
+                cmds.push(format!("input {dev} trigger/value {}", self.editor.trigger));
+            }
+            if ui
+                .add(egui::Slider::new(&mut self.editor.grip, 0.0..=1.0).text("grip"))
+                .changed()
+            {
+                cmds.push(format!("input {dev} grip/value {}", self.editor.grip));
+            }
+            let mut js = false;
+            js |= ui
+                .add(egui::Slider::new(&mut self.editor.joystick[0], -1.0..=1.0).text("joystick x"))
+                .changed();
+            js |= ui
+                .add(egui::Slider::new(&mut self.editor.joystick[1], -1.0..=1.0).text("joystick y"))
+                .changed();
+            if js {
+                cmds.push(format!(
+                    "input {dev} joystick/x {}",
+                    self.editor.joystick[0]
+                ));
+                cmds.push(format!(
+                    "input {dev} joystick/y {}",
+                    self.editor.joystick[1]
+                ));
+            }
+            if ui.small_button("center joystick").clicked() {
+                cmds.push(format!("input {dev} joystick/x 0"));
+                cmds.push(format!("input {dev} joystick/y 0"));
+            }
         }
-        ui.separator();
+        self.execute_all(cmds);
+    }
+
+    fn show_presets(&mut self, ui: &mut egui::Ui) {
         ui.heading("Presets");
+        let mut cmds = Vec::new();
         ui.horizontal(|ui| {
             ui.label("height");
             ui.add(
@@ -330,6 +311,8 @@ impl App {
                     .suffix(" m")
                     .range(0.5..=2.5),
             );
+        });
+        ui.horizontal(|ui| {
             for name in presets::NAMES {
                 if ui.button(*name).clicked() {
                     cmds.push(format!("preset {name} {}", self.preset_height));
@@ -339,48 +322,9 @@ impl App {
         self.execute_all(cmds);
     }
 
-    /// Copies the engine's world into the widgets, so that changes made
-    /// through the control pipe or presets are shown. Called every frame;
-    /// widget edits are executed immediately, so the world already holds
-    /// the value a widget is being dragged to.
-    fn refresh_from_world(&mut self) {
-        let e = self.engine.lock().expect("engine lock");
-        let w = e.world();
-        let pos = |id: u16| w.pose(id).map_or([0.0; 3], |p| p.position);
-        let euler = |id: u16| {
-            w.pose(id)
-                .map_or([0.0; 3], |p| quat_to_euler_deg(p.rotation))
-        };
-        self.hmd_position.value = pos(device_ids::HMD);
-        self.hmd_euler.value = euler(device_ids::HMD);
-        for (panel, id) in [
-            (&mut self.left, device_ids::CONTROLLER_LEFT),
-            (&mut self.right, device_ids::CONTROLLER_RIGHT),
-        ] {
-            panel.position.value = pos(id);
-            panel.euler.value = euler(id);
-            let input = |component: u16| w.inputs.get(&(id, component)).copied().unwrap_or(0.0);
-            for (_, component, state) in &mut panel.buttons {
-                *state = input(*component) != 0.0;
-            }
-            panel.joystick = [
-                input(controller_components::JOYSTICK_X),
-                input(controller_components::JOYSTICK_Y),
-            ];
-            panel.trigger = input(controller_components::TRIGGER_VALUE);
-            panel.grip = input(controller_components::GRIP_VALUE);
-        }
-        for (i, t) in self.trackers.iter_mut().enumerate() {
-            t.value = pos(device_ids::TRACKER_BASE + i as u16);
-        }
-        self.ipd_mm = w.display.ipd_m * 1000.0;
-        self.projection = [w.display.projection_left, w.display.projection_right];
-        self.swap_eyes = w.display.swap_eyes;
-    }
-
     fn show_display(&mut self, ui: &mut egui::Ui) {
-        let mut cmds = Vec::new();
         ui.heading("Display");
+        let mut cmds = Vec::new();
         if ui
             .add(egui::Slider::new(&mut self.ipd_mm, 50.0..=80.0).text("IPD mm"))
             .changed()
@@ -388,17 +332,25 @@ impl App {
             cmds.push(format!("ipd {}", self.ipd_mm / 1000.0));
         }
         let mut proj_changed = false;
-        for (eye, p) in ["left", "right"].iter().zip(self.projection.iter_mut()) {
-            ui.horizontal(|ui| {
-                ui.label(*eye);
-                for (name, v) in ["L", "R", "T", "B"].iter().zip(p.iter_mut()) {
-                    ui.label(*name);
-                    proj_changed |= ui
-                        .add(egui::DragValue::new(v).speed(0.01).fixed_decimals(2))
-                        .changed();
+        egui::Grid::new("proj")
+            .num_columns(5)
+            .spacing([6.0, 4.0])
+            .show(ui, |ui| {
+                ui.label("");
+                for name in ["L", "R", "T", "B"] {
+                    ui.small(name);
+                }
+                ui.end_row();
+                for (eye, p) in ["left", "right"].iter().zip(self.projection.iter_mut()) {
+                    ui.label(*eye);
+                    for v in p.iter_mut() {
+                        proj_changed |= ui
+                            .add(egui::DragValue::new(v).speed(0.01).fixed_decimals(2))
+                            .changed();
+                    }
+                    ui.end_row();
                 }
             });
-        }
         ui.horizontal(|ui| {
             if ui.button("symmetric").clicked() {
                 self.projection = [[-1.0, 1.0, -1.0, 1.0]; 2];
@@ -408,38 +360,25 @@ impl App {
                 self.projection = [[-1.2, 0.8, -1.0, 1.0], [-0.8, 1.2, -1.0, 1.0]];
                 proj_changed = true;
             }
+            if ui.checkbox(&mut self.swap_eyes, "swap eyes").changed() {
+                cmds.push(format!("swap {}", u8::from(self.swap_eyes)));
+            }
         });
         if proj_changed {
-            cmds.push(self.display_commands());
-        }
-        if ui.checkbox(&mut self.swap_eyes, "swap eyes").changed() {
-            cmds.push(format!("swap {}", u8::from(self.swap_eyes)));
+            let [l, r] = self.projection;
+            cmds.push(format!(
+                "proj {} {} {} {} {} {} {} {}",
+                l[0], l[1], l[2], l[3], r[0], r[1], r[2], r[3]
+            ));
         }
         self.execute_all(cmds);
     }
 
-    fn show_console(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Console");
+    fn show_recording(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Recording");
         ui.horizontal(|ui| {
-            let response = ui.add(
-                egui::TextEdit::singleline(&mut self.command_line)
-                    .hint_text("pos hmd 0 1.7 0")
-                    .desired_width(320.0),
-            );
-            let submitted = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if (ui.button("run").clicked() || submitted) && !self.command_line.trim().is_empty() {
-                let line = std::mem::take(&mut self.command_line);
-                self.execute(&line);
-                response.request_focus();
-            }
-        });
-        ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut self.record_path).desired_width(240.0));
-            let label = if self.recording {
-                "stop recording"
-            } else {
-                "record"
-            };
+            ui.add(egui::TextEdit::singleline(&mut self.record_path).desired_width(220.0));
+            let label = if self.recording { "stop" } else { "record" };
             if ui.button(label).clicked() {
                 let mut e = self.engine.lock().expect("engine lock");
                 if self.recording {
@@ -452,17 +391,45 @@ impl App {
                     }
                 }
             }
+        });
+        if self.recording {
+            ui.colored_label(Color32::from_rgb(0xc0, 0x39, 0x2b), "recording");
+        }
+    }
+
+    fn show_console(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Console");
+        ui.horizontal(|ui| {
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut self.command_line)
+                    .hint_text("pos hmd 0 1.7 0")
+                    .desired_width(260.0),
+            );
+            let submitted = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if (ui.button("run").clicked() || submitted) && !self.command_line.trim().is_empty() {
+                let line = std::mem::take(&mut self.command_line);
+                self.execute(&line);
+                response.request_focus();
+            }
             if ui.button("clear").clicked() {
                 self.output.clear();
             }
         });
         egui::ScrollArea::vertical()
+            .id_salt("console")
             .stick_to_bottom(true)
             .show(ui, |ui| {
                 for line in &self.output {
                     ui.monospace(line);
                 }
             });
+    }
+
+    fn show_view(&mut self, ui: &mut egui::Ui) {
+        let world = self.engine.lock().expect("engine lock").world().clone();
+        if let Some(id) = self.view.show(ui, &world, Selection(Some(self.selected))) {
+            self.selected = id;
+        }
     }
 }
 
@@ -480,29 +447,46 @@ impl eframe::App for App {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ui, |ui| {
-            self.show_connection(ui);
+            self.show_status_bar(ui);
             ui.separator();
-            // Explicit two-column layout: devices on the left, display
-            // parameters and the console on the right.
-            // The root ui is unbounded, so sizes come from the viewport.
-            let screen = ui.ctx().content_rect();
-            let right_width = 380.0;
-            let left_width = (screen.width() - right_width - 48.0).max(300.0);
-            let column_height = (screen.height() - ui.cursor().top() - 16.0).max(200.0);
+            // The root ui is unbounded, so column sizes come from the viewport.
+            let content = ui.ctx().content_rect();
+            let left_width = 340.0;
+            let right_width = 360.0;
+            let gap = 16.0;
+            let view_width =
+                (content.width() - left_width - right_width - 3.0 * gap - 16.0).max(300.0);
+            let column_height = (content.height() - ui.cursor().top() - 16.0).max(200.0);
             ui.horizontal_top(|ui| {
                 ui.vertical(|ui| {
-                    ui.set_max_width(left_width);
                     ui.set_min_width(left_width);
+                    ui.set_max_width(left_width);
                     egui::ScrollArea::vertical()
-                        .id_salt("devices")
+                        .id_salt("left")
                         .max_height(column_height)
-                        .show(ui, |ui| self.show_devices(ui));
+                        .show(ui, |ui| {
+                            self.show_device_list(ui);
+                            ui.separator();
+                            self.show_editor(ui);
+                            ui.separator();
+                            self.show_presets(ui);
+                        });
                 });
                 ui.separator();
                 ui.vertical(|ui| {
-                    ui.set_max_width(right_width);
+                    ui.set_min_width(view_width);
+                    ui.set_max_width(view_width);
+                    ui.set_min_height(column_height);
+                    ui.set_max_height(column_height);
+                    self.show_view(ui);
+                });
+                ui.separator();
+                ui.vertical(|ui| {
                     ui.set_min_width(right_width);
+                    ui.set_max_width(right_width);
                     self.show_display(ui);
+                    ui.separator();
+                    self.show_recording(ui);
                     ui.separator();
                     self.show_console(ui);
                 });
@@ -556,7 +540,7 @@ fn main() -> eframe::Result {
     };
 
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 860.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([1400.0, 860.0]),
         ..Default::default()
     };
     eframe::run_native(
