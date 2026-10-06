@@ -15,11 +15,16 @@
 ### フィーダ（Rust）
 
 - `protocol`: レイアウトサイズ，往復符号化，ゴールデンデータ生成と照合．
-- `core`: 骨格計算，入力写像，OSC 符号化（ゴールデンバイト列），制御コマンド解釈．
+- `core`: コマンド解釈，四元数演算，姿勢プリセット，OSC 符号化（バイト列），設定の既定値，
+  JSON Lines 整形，シナリオ解釈，記録ファイルの再生可能性，制御パイプの往復（Windows）．
+- `cli`: 引数解釈．
 
 実行: `cargo test --workspace`（`feeder/` 内）
 
 ゴールデンデータの更新: `VRDUMMY_UPDATE_FIXTURES=1 cargo test -p vrdummy-protocol`
+
+初版のゴールデンデータは仕様書から独立に書いた使い捨ての Python スクリプトで生成し，
+Rust と C++ の双方がそれに一致することを確認した．以後の更新は Rust 側で行う．
 
 ## 統合試験（SteamVR 実機，手動）
 

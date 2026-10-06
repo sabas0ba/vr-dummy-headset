@@ -73,53 +73,9 @@ pub fn handle_line(engine: &SharedEngine, line: &str) -> (String, bool) {
     }
 }
 
-#[cfg(windows)]
-fn create_server_pipe(pipe_name: &str) -> io::Result<File> {
-    use std::os::windows::io::FromRawHandle;
-    let path = win32::wide(&win32::pipe_path(pipe_name));
-    // SAFETY: `path` is NUL-terminated and outlives the call; all other
-    // arguments are plain values. The returned handle is owned by the File.
-    let handle = unsafe {
-        win32::CreateNamedPipeW(
-            path.as_ptr(),
-            win32::PIPE_ACCESS_DUPLEX,
-            win32::PIPE_TYPE_BYTE | win32::PIPE_READMODE_BYTE | win32::PIPE_WAIT | win32::PIPE_REJECT_REMOTE_CLIENTS,
-            1,
-            4096,
-            4096,
-            0,
-            std::ptr::null_mut(),
-        )
-    };
-    if handle == win32::INVALID_HANDLE_VALUE {
-        return Err(io::Error::last_os_error());
-    }
-    // SAFETY: `handle` is a valid, owned pipe handle returned above.
-    let ok = unsafe { win32::ConnectNamedPipe(handle, std::ptr::null_mut()) };
-    if ok == 0 {
-        // SAFETY: GetLastError has no preconditions.
-        let err = unsafe { win32::GetLastError() };
-        if err != win32::ERROR_PIPE_CONNECTED {
-            // SAFETY: closing the handle we own exactly once.
-            unsafe { win32::CloseHandle(handle) };
-            return Err(io::Error::from_raw_os_error(err as i32));
-        }
-    }
-    // SAFETY: ownership of the handle moves into the File, which closes it.
-    Ok(unsafe { File::from_raw_handle(handle.cast()) })
-}
-
-#[cfg(not(windows))]
-fn create_server_pipe(_pipe_name: &str) -> io::Result<File> {
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "control pipe is only implemented on Windows",
-    ))
-}
-
 fn serve(pipe_name: &str, engine: &SharedEngine, running: &AtomicBool, quit_flag: &AtomicBool) {
     while running.load(Ordering::SeqCst) {
-        let file = match create_server_pipe(pipe_name) {
+        let file = match win32::accept_named_pipe(pipe_name) {
             Ok(f) => f,
             Err(e) => {
                 log::error!("control pipe failed: {e}");
@@ -150,15 +106,7 @@ fn serve(pipe_name: &str, engine: &SharedEngine, running: &AtomicBool, quit_flag
             }
         }
         let _ = writer.flush();
-        #[cfg(windows)]
-        {
-            use std::os::windows::io::AsRawHandle;
-            // SAFETY: the handle is valid for the lifetime of `writer`.
-            unsafe {
-                win32::FlushFileBuffers(writer.as_raw_handle().cast());
-                win32::DisconnectNamedPipe(writer.as_raw_handle().cast());
-            }
-        }
+        win32::disconnect_named_pipe(&writer);
     }
 }
 

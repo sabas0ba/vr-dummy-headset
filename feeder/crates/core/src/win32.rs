@@ -61,6 +61,71 @@ unsafe extern "system" {
     pub fn GetLastError() -> DWORD;
 }
 
+/// Creates one byte-mode server instance of a local named pipe and blocks
+/// until a client connects. The returned file owns the handle.
+#[cfg(windows)]
+pub fn accept_named_pipe(name: &str) -> std::io::Result<std::fs::File> {
+    use std::os::windows::io::FromRawHandle;
+    let path = wide(&pipe_path(name));
+    // SAFETY: `path` is NUL-terminated and outlives the call; all other
+    // arguments are plain values. The returned handle is owned by the File.
+    let handle = unsafe {
+        CreateNamedPipeW(
+            path.as_ptr(),
+            PIPE_ACCESS_DUPLEX,
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+            1,
+            65536,
+            65536,
+            0,
+            std::ptr::null_mut(),
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: `handle` is a valid, owned pipe handle returned above.
+    let ok = unsafe { ConnectNamedPipe(handle, std::ptr::null_mut()) };
+    if ok == 0 {
+        // SAFETY: GetLastError has no preconditions.
+        let err = unsafe { GetLastError() };
+        if err != ERROR_PIPE_CONNECTED {
+            // SAFETY: closing the handle we own exactly once.
+            unsafe { CloseHandle(handle) };
+            return Err(std::io::Error::from_raw_os_error(err as i32));
+        }
+    }
+    // SAFETY: ownership of the handle moves into the File, which closes it.
+    Ok(unsafe { std::fs::File::from_raw_handle(handle.cast()) })
+}
+
+/// Not available off Windows.
+#[cfg(not(windows))]
+pub fn accept_named_pipe(_name: &str) -> std::io::Result<std::fs::File> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "named pipes are only implemented on Windows",
+    ))
+}
+
+/// Flushes and disconnects a server-side pipe handle so that the client sees
+/// end of stream. The file stays open until dropped.
+pub fn disconnect_named_pipe(file: &std::fs::File) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        // SAFETY: the handle is valid for the lifetime of `file`.
+        unsafe {
+            FlushFileBuffers(file.as_raw_handle().cast());
+            DisconnectNamedPipe(file.as_raw_handle().cast());
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = file;
+    }
+}
+
 /// Full path of a local named pipe.
 pub fn pipe_path(name: &str) -> String {
     format!(r"\\.\pipe\{name}")

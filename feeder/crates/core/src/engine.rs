@@ -141,6 +141,15 @@ impl Engine {
         }
     }
 
+    /// Closes the driver connection (sending Goodbye). `poll` reconnects
+    /// after `reconnect_interval_ms`; state is kept and resynchronised then.
+    pub fn disconnect(&mut self) {
+        if self.client.take().is_some() {
+            log::info!("disconnected from driver");
+        }
+        self.last_connect_attempt = Some(Instant::now());
+    }
+
     /// Drives reconnection and drains driver log records. Call regularly.
     pub fn poll(&mut self) {
         if let Some(client) = &self.client {

@@ -1,0 +1,19 @@
+# Feeder configuration. Every key is optional; these are the defaults.
+
+[driver]
+# Must match driver_vrdummy.pipe_name in the driver's default.vrsettings.
+pipe_name = "vrdummy-driver"
+reconnect_interval_ms = 1000
+handshake_timeout_ms = 2000
+
+[control]
+pipe_name = "vrdummy-control"
+
+[osc]
+host = "127.0.0.1"
+port = 9000
+
+[log]
+# JSON Lines file. Empty disables the file sink. VRDUMMY_LOG overrides level.
+file = ""
+level = "info"
