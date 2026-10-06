@@ -87,7 +87,13 @@ impl DriverClient {
     /// Sends one message.
     pub fn send(&mut self, message: &Message) -> io::Result<()> {
         let frame = encode(message);
+        log::trace!(
+            "pipe: writing {} bytes ({:?})",
+            frame.len(),
+            message.msg_type()
+        );
         let result = self.file.write_all(&frame).and_then(|()| self.file.flush());
+        log::trace!("pipe: write finished ({:?})", result.as_ref().err());
         if result.is_err() {
             self.alive = false;
         }
@@ -107,6 +113,7 @@ impl DriverClient {
             if available == 0 {
                 return Ok(());
             }
+            log::trace!("pipe: {available} bytes available");
             let mut buf = vec![0u8; available.min(64 * 1024)];
             let n = match self.file.read(&mut buf) {
                 Ok(0) => {

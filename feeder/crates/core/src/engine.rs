@@ -133,6 +133,7 @@ impl Engine {
         match DriverClient::connect(&self.config.driver.pipe_name, timeout) {
             Ok(client) => {
                 self.client = Some(client);
+                log::debug!("initial sync");
                 if let Err(e) = self.sync_all() {
                     log::warn!("initial sync failed: {e}");
                 }

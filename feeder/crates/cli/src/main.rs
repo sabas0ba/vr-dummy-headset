@@ -172,6 +172,7 @@ fn run(
     if !engine.try_connect() {
         log::warn!("driver not reachable; will keep retrying in the background");
     }
+    log::debug!("engine ready; starting control server");
     let engine: SharedEngine = Arc::new(Mutex::new(engine));
     let quit = Arc::new(AtomicBool::new(false));
 

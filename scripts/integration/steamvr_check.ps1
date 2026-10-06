@@ -32,14 +32,19 @@ Leave SteamVR running and the driver registered after the check.
 #>
 [CmdletBinding()]
 param(
-    [string]$DriverDir = (Join-Path $PSScriptRoot "..\..\driver\build\msvc-x64\vrdummy"),
-    [string]$Probe = (Join-Path $PSScriptRoot "..\..\driver\build\msvc-x64\Release\vrdummy_probe.exe"),
-    [string]$Feeder = (Join-Path $PSScriptRoot "..\..\feeder\target\release\vrdummy-cli.exe"),
+    [string]$DriverDir = "",
+    [string]$Probe = "",
+    [string]$Feeder = "",
     [string]$SteamVRDir = "C:\Program Files (x86)\Steam\steamapps\common\SteamVR",
     [switch]$KeepRunning
 )
 
 $ErrorActionPreference = "Stop"
+
+# Defaults resolved here: $PSScriptRoot is empty inside param() on PowerShell 5.1.
+if ($DriverDir -eq "") { $DriverDir = Join-Path $PSScriptRoot "..\..\driver\build\msvc-x64\vrdummy" }
+if ($Probe -eq "") { $Probe = Join-Path $PSScriptRoot "..\..\driver\build\msvc-x64\Release\vrdummy_probe.exe" }
+if ($Feeder -eq "") { $Feeder = Join-Path $PSScriptRoot "..\..\feeder\target\release\vrdummy-cli.exe" }
 $failures = 0
 
 function Step($name, [scriptblock]$body) {
@@ -83,7 +88,9 @@ Step "device list" {
 
 $feederProc = $null
 Step "start feeder" {
-    $script:feederProc = Start-Process -FilePath $Feeder -ArgumentList @("--level", "debug", "run", "--no-stdin") -PassThru -WindowStyle Hidden
+    $script:feederLog = Join-Path $env:TEMP "vrdummy-feeder-check.log"
+    $script:feederProc = Start-Process -FilePath $Feeder -ArgumentList @("--level", "debug", "run", "--no-stdin") -PassThru -WindowStyle Hidden -RedirectStandardError $script:feederLog -RedirectStandardOutput (Join-Path $env:TEMP "vrdummy-feeder-check.out")
+    Write-Host "  feeder log: $script:feederLog"
     Start-Sleep -Seconds 3
     $status = & $Feeder set status
     Write-Host "  $status"
@@ -117,6 +124,7 @@ Step "stop feeder" {
     & $Feeder set quit | Out-Null
     Start-Sleep -Seconds 1
     if ($null -ne $script:feederProc -and -not $script:feederProc.HasExited) { Stop-Process -Id $script:feederProc.Id -Force }
+    if (Test-Path $script:feederLog) { Get-Content $script:feederLog | Select-Object -Last 20 | ForEach-Object { Write-Host "  | $_" } }
     Start-Sleep -Seconds 1
     $line = (& $Probe pose VRDUMMY-TRK-3) -join ""
     Write-Host "  $line"
