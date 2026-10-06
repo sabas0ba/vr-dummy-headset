@@ -1,0 +1,17 @@
+[package]
+name = "vrdummy-core"
+description = "State model, driver client, OSC sender and logging for the vrdummy feeder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+log = "0.4.34"
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.1.6"
+vrdummy-protocol = { path = "../protocol" }
+
+[lints]
+workspace = true

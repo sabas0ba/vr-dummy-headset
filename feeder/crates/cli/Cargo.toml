@@ -1,0 +1,20 @@
+[package]
+name = "vrdummy-cli"
+description = "Command line front end of the vrdummy feeder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "vrdummy-cli"
+path = "src/main.rs"
+
+[dependencies]
+log = "0.4.34"
+vrdummy-core = { path = "../core" }
+vrdummy-protocol = { path = "../protocol" }
+
+[lints]
+workspace = true
