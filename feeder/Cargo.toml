@@ -13,6 +13,8 @@ edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/sabas0ba/vr-dummy-headset"
 rust-version = "1.97"
+# Workspace crates depend on each other by path and are not published.
+publish = false
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

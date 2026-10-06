@@ -1,77 +1,81 @@
 //! Client side of the driver pipe (`docs/protocol.md`).
 //!
-//! The pipe is opened as an ordinary file. A reader thread decodes frames and
-//! forwards them over a channel; writes happen on the caller's thread.
+//! The pipe is opened as an ordinary file and driven from one thread. Reads
+//! are issued only for bytes that `PeekNamedPipe` reports as available, so a
+//! read never blocks and never stalls a concurrent write on the same handle
+//! (synchronous pipe handles serialise their operations).
 
+use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
-use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use vrdummy_protocol::{
     DecodeError, Decoder, DeviceInfo, Hello, Message, PROTOCOL_VERSION, encode,
 };
 
-use crate::win32::pipe_path;
+use crate::win32::{pipe_bytes_available, pipe_path};
 
 /// Connected driver.
 pub struct DriverClient {
-    writer: File,
-    rx: Receiver<Message>,
-    reader: Option<JoinHandle<()>>,
+    file: File,
+    decoder: Decoder,
+    pending: VecDeque<Message>,
     devices: Vec<DeviceInfo>,
+    alive: bool,
 }
 
 impl DriverClient {
-    /// Opens the pipe, performs the handshake and starts the reader thread.
+    /// Opens the pipe and performs the handshake.
     pub fn connect(pipe_name: &str, handshake_timeout: Duration) -> io::Result<Self> {
         let path = pipe_path(pipe_name);
         let file = OpenOptions::new().read(true).write(true).open(&path)?;
-        let reader_file = file.try_clone()?;
-        let (tx, rx) = mpsc::channel();
-        let reader = std::thread::Builder::new()
-            .name("vrdummy-driver-reader".to_owned())
-            .spawn(move || reader_loop(reader_file, &tx))?;
-
         let mut client = Self {
-            writer: file,
-            rx,
-            reader: Some(reader),
+            file,
+            decoder: Decoder::new(),
+            pending: VecDeque::new(),
             devices: Vec::new(),
+            alive: true,
         };
         client.send(&Message::Hello(Hello {
             protocol_version: u32::from(PROTOCOL_VERSION),
             client_flags: 0,
         }))?;
-        match client.rx.recv_timeout(handshake_timeout) {
-            Ok(Message::HelloAck(ack)) => {
-                if ack.protocol_version != u32::from(PROTOCOL_VERSION) {
-                    log::warn!(
-                        "driver protocol version {} differs from {}",
-                        ack.protocol_version,
-                        PROTOCOL_VERSION
-                    );
+        let deadline = Instant::now() + handshake_timeout;
+        loop {
+            client.pump()?;
+            if let Some(msg) = client.pending.pop_front() {
+                match msg {
+                    Message::HelloAck(ack) => {
+                        if ack.protocol_version != u32::from(PROTOCOL_VERSION) {
+                            log::warn!(
+                                "driver protocol version {} differs from {}",
+                                ack.protocol_version,
+                                PROTOCOL_VERSION
+                            );
+                        }
+                        client.devices = ack.devices;
+                        log::info!(
+                            "connected to driver on {path} ({} devices)",
+                            client.devices.len()
+                        );
+                        return Ok(client);
+                    }
+                    other => {
+                        return Err(io::Error::other(format!(
+                            "unexpected message during handshake: {:?}",
+                            other.msg_type()
+                        )));
+                    }
                 }
-                client.devices = ack.devices;
-                log::info!(
-                    "connected to driver on {path} ({} devices)",
-                    client.devices.len()
-                );
-                Ok(client)
             }
-            Ok(other) => Err(io::Error::other(format!(
-                "unexpected message during handshake: {:?}",
-                other.msg_type()
-            ))),
-            Err(RecvTimeoutError::Timeout) => Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "driver did not answer the handshake",
-            )),
-            Err(RecvTimeoutError::Disconnected) => Err(io::Error::new(
-                io::ErrorKind::ConnectionAborted,
-                "driver closed the pipe during handshake",
-            )),
+            if Instant::now() >= deadline {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "driver did not answer the handshake",
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(5));
         }
     }
 
@@ -83,57 +87,79 @@ impl DriverClient {
     /// Sends one message.
     pub fn send(&mut self, message: &Message) -> io::Result<()> {
         let frame = encode(message);
-        self.writer.write_all(&frame)?;
-        self.writer.flush()
+        let result = self.file.write_all(&frame).and_then(|()| self.file.flush());
+        if result.is_err() {
+            self.alive = false;
+        }
+        result
     }
 
-    /// Returns a message received from the driver, if any is queued.
-    pub fn try_recv(&self) -> Option<Message> {
-        self.rx.try_recv().ok()
+    /// Reads every byte already available and decodes complete frames.
+    fn pump(&mut self) -> io::Result<()> {
+        loop {
+            let available = match pipe_bytes_available(&self.file) {
+                Ok(n) => n,
+                Err(e) => {
+                    self.alive = false;
+                    return Err(e);
+                }
+            };
+            if available == 0 {
+                return Ok(());
+            }
+            let mut buf = vec![0u8; available.min(64 * 1024)];
+            let n = match self.file.read(&mut buf) {
+                Ok(0) => {
+                    self.alive = false;
+                    return Err(io::Error::new(
+                        io::ErrorKind::ConnectionAborted,
+                        "driver closed the pipe",
+                    ));
+                }
+                Ok(n) => n,
+                Err(e) => {
+                    self.alive = false;
+                    return Err(e);
+                }
+            };
+            self.decoder.push(&buf[..n]);
+            while let Some(frame) = self.decoder.next_frame() {
+                match frame {
+                    Ok(msg) => self.pending.push_back(msg),
+                    Err(DecodeError::PayloadTooLarge(size)) => {
+                        self.alive = false;
+                        return Err(io::Error::other(format!(
+                            "driver sent an oversized frame ({size} bytes)"
+                        )));
+                    }
+                    Err(e) => log::warn!("skipped frame from driver: {e}"),
+                }
+            }
+        }
     }
 
-    /// Whether the reader thread is still running.
+    /// Returns the next message received from the driver, if any.
+    /// Transport errors mark the connection dead (see [`Self::alive`]).
+    pub fn try_recv(&mut self) -> Option<Message> {
+        if self.alive
+            && self.pending.is_empty()
+            && let Err(e) = self.pump()
+        {
+            log::debug!("driver pipe read ended: {e}");
+        }
+        self.pending.pop_front()
+    }
+
+    /// Whether the connection is still usable.
     pub fn alive(&self) -> bool {
-        self.reader.as_ref().is_some_and(|h| !h.is_finished())
+        self.alive
     }
 }
 
 impl Drop for DriverClient {
     fn drop(&mut self) {
-        let _ = self.send(&Message::Goodbye);
-        // Closing the writer handle ends the reader's blocking read once the
-        // server disconnects; do not join so that drop never blocks.
-        self.reader.take();
-    }
-}
-
-fn reader_loop(mut file: File, tx: &mpsc::Sender<Message>) {
-    let mut decoder = Decoder::new();
-    let mut buf = vec![0u8; 64 * 1024];
-    loop {
-        let n = match file.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => n,
-            Err(e) => {
-                log::debug!("driver pipe read ended: {e}");
-                break;
-            }
-        };
-        decoder.push(&buf[..n]);
-        while let Some(frame) = decoder.next_frame() {
-            match frame {
-                Ok(msg) => {
-                    if tx.send(msg).is_err() {
-                        return;
-                    }
-                }
-                Err(DecodeError::PayloadTooLarge(n)) => {
-                    log::error!("driver sent an oversized frame ({n} bytes); closing");
-                    return;
-                }
-                Err(e) => log::warn!("skipped frame from driver: {e}"),
-            }
+        if self.alive {
+            let _ = self.send(&Message::Goodbye);
         }
     }
-    log::info!("driver pipe closed");
 }

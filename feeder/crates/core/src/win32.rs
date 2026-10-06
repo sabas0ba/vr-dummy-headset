@@ -51,6 +51,15 @@ unsafe extern "system" {
     pub fn ConnectNamedPipe(pipe: HANDLE, overlapped: *mut c_void) -> BOOL;
     /// `WaitNamedPipeW`.
     pub fn WaitNamedPipeW(name: *const u16, timeout_ms: DWORD) -> BOOL;
+    /// `PeekNamedPipe`.
+    pub fn PeekNamedPipe(
+        pipe: HANDLE,
+        buffer: *mut c_void,
+        buffer_size: DWORD,
+        bytes_read: *mut DWORD,
+        total_bytes_avail: *mut DWORD,
+        bytes_left_this_message: *mut DWORD,
+    ) -> BOOL;
     /// `DisconnectNamedPipe`.
     pub fn DisconnectNamedPipe(pipe: HANDLE) -> BOOL;
     /// `FlushFileBuffers`.
@@ -102,6 +111,42 @@ pub fn accept_named_pipe(name: &str) -> std::io::Result<std::fs::File> {
 /// Not available off Windows.
 #[cfg(not(windows))]
 pub fn accept_named_pipe(_name: &str) -> std::io::Result<std::fs::File> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "named pipes are only implemented on Windows",
+    ))
+}
+
+/// Number of bytes that can be read from a pipe without blocking.
+///
+/// A synchronous pipe handle serialises its operations: a blocked read on a
+/// duplicated handle also blocks writes on the same file object. Reading only
+/// what is already available keeps a single-threaded client deadlock free.
+#[cfg(windows)]
+pub fn pipe_bytes_available(file: &std::fs::File) -> std::io::Result<usize> {
+    use std::os::windows::io::AsRawHandle;
+    let mut available: DWORD = 0;
+    // SAFETY: the handle is valid for the lifetime of `file`; the buffer
+    // arguments are null, which PeekNamedPipe permits.
+    let ok = unsafe {
+        PeekNamedPipe(
+            file.as_raw_handle().cast(),
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null_mut(),
+            &raw mut available,
+            std::ptr::null_mut(),
+        )
+    };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(available as usize)
+}
+
+/// Not available off Windows.
+#[cfg(not(windows))]
+pub fn pipe_bytes_available(_file: &std::fs::File) -> std::io::Result<usize> {
     Err(std::io::Error::new(
         std::io::ErrorKind::Unsupported,
         "named pipes are only implemented on Windows",

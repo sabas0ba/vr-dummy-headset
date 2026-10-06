@@ -156,7 +156,7 @@ impl Engine {
 
     /// Drives reconnection and drains driver log records. Call regularly.
     pub fn poll(&mut self) {
-        if let Some(client) = &self.client {
+        if let Some(client) = self.client.as_mut() {
             while let Some(msg) = client.try_recv() {
                 if let Message::Log(l) = msg {
                     logging::log_driver_record(
