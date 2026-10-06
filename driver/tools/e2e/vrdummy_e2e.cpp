@@ -93,8 +93,11 @@ Vec3 Position(const vr::HmdMatrix34_t& m) { return {m.m[0][3], m.m[1][3], m.m[2]
 // Yaw in degrees about +Y for a rotation matrix (SteamVR convention: -Z forward).
 double YawDeg(const vr::HmdMatrix34_t& m) { return std::atan2(m.m[0][2], m.m[2][2]) * 180.0 / 3.14159265358979323846; }
 
+constexpr const char* kVrchatAppKey = "steam.app.438100";
+
 struct Session {
     vr::IVRSystem* sys = nullptr;
+    bool vrchat_mode = false;
     vrscene::ActionSet actions;
     vrscene::Renderer renderer;
     vr::TrackedDevicePose_t poses[vr::k_unMaxTrackedDeviceCount] = {};
@@ -109,13 +112,33 @@ struct Session {
         }
         if (!vrscene::SetupChaperoneIdentity()) std::fprintf(stderr, "warning: chaperone setup not committed\n");
         vr::VRCompositor()->SetTrackingSpace(vr::TrackingUniverseStanding);
-        char exe[MAX_PATH] = {};
-        GetModuleFileNameA(nullptr, exe, MAX_PATH);
-        std::string manifest = exe;
-        manifest = manifest.substr(0, manifest.find_last_of("\\/") + 1) + "actions.json";
-        if (!actions.Init(manifest)) {
-            std::fprintf(stderr, "SetActionManifestPath failed: %s\n", manifest.c_str());
-            return false;
+        char vrchat_manifest[1024] = {};
+        const DWORD n = GetEnvironmentVariableA("VRDUMMY_E2E_VRCHAT_ACTIONS", vrchat_manifest, sizeof(vrchat_manifest));
+        vrchat_mode = n > 0 && n < sizeof(vrchat_manifest);
+        if (vrchat_mode) {
+            // Exercise the driver's default binding for VRChat: identify this
+            // process as VRChat and load VRChat's own action manifest.
+            const auto err_id = vr::VRApplications()->IdentifyApplication(GetCurrentProcessId(), kVrchatAppKey);
+            if (err_id != vr::VRApplicationError_None) {
+                std::fprintf(stderr, "IdentifyApplication failed: %d\n", static_cast<int>(err_id));
+                return false;
+            }
+            if (vr::VRInput()->SetActionManifestPath(vrchat_manifest) != vr::VRInputError_None) {
+                std::fprintf(stderr, "SetActionManifestPath failed: %s\n", vrchat_manifest);
+                return false;
+            }
+            vr::VRInput()->GetActionSetHandle("/actions/global", &actions.set);
+            vr::VRInput()->GetInputSourceHandle("/user/hand/left", &actions.left);
+            vr::VRInput()->GetInputSourceHandle("/user/hand/right", &actions.right);
+        } else {
+            char exe[MAX_PATH] = {};
+            GetModuleFileNameA(nullptr, exe, MAX_PATH);
+            std::string manifest = exe;
+            manifest = manifest.substr(0, manifest.find_last_of("\\/") + 1) + "actions.json";
+            if (!actions.Init(manifest)) {
+                std::fprintf(stderr, "SetActionManifestPath failed: %s\n", manifest.c_str());
+                return false;
+            }
         }
         if (!renderer.Init(sys)) return false;
         return true;
@@ -419,6 +442,65 @@ TEST_CASE("S8 chaperone: calibrated, standing origin at raw origin, play area as
     const uint64_t universe = g_session.sys->GetUint64TrackedDeviceProperty(vr::k_unTrackedDeviceIndex_Hmd, vr::Prop_CurrentUniverseId_Uint64, &err);
     CHECK(err == vr::TrackedProp_Success);
     CHECK(universe == 0x5652444Dull);
+}
+
+TEST_CASE("S9 VRChat bindings: move, rotate, jump, interact, grab and menu reach VRChat's actions") {
+    if (!g_session.vrchat_mode) {
+        MESSAGE("skipped: set VRDUMMY_E2E_VRCHAT_ACTIONS to VRChat's actions.json and run with -tc=S9*");
+        return;
+    }
+    ResetScene();
+    auto* in = vr::VRInput();
+    vr::VRActionHandle_t move = 0, rotate = 0, jump = 0, interact = 0, grab = 0, menu = 0, trigger_axis = 0;
+    in->GetActionHandle("/actions/global/in/move", &move);
+    in->GetActionHandle("/actions/global/in/rotate", &rotate);
+    in->GetActionHandle("/actions/global/in/jump", &jump);
+    in->GetActionHandle("/actions/global/in/interact", &interact);
+    in->GetActionHandle("/actions/global/in/grab", &grab);
+    in->GetActionHandle("/actions/global/in/menu", &menu);
+    in->GetActionHandle("/actions/global/in/trigger_axis", &trigger_axis);
+    const auto left = g_session.actions.left;
+    const auto right = g_session.actions.right;
+    CHECK_MESSAGE(g_session.EnsureInputFocus(), "scene application has input focus");
+    REQUIRE(WaitFor([&] { return g_session.Digital(jump, right).bActive; }, 5000ms));
+
+    REQUIRE(Cmd("input ctrl-l joystick/x -0.5"));
+    REQUIRE(Cmd("input ctrl-l joystick/y 0.25"));
+    CHECK(WaitFor([&] {
+        const auto v = g_session.Analog(move, left);
+        return std::fabs(v.x + 0.5f) < 0.02f && std::fabs(v.y - 0.25f) < 0.02f;
+    }));
+    REQUIRE(Cmd("input ctrl-r joystick/x 0.8"));
+    CHECK(WaitFor([&] { return std::fabs(g_session.Analog(rotate, right).x - 0.8f) < 0.02f; }));
+    REQUIRE(Cmd("input ctrl-l joystick/x 0"));
+    REQUIRE(Cmd("input ctrl-l joystick/y 0"));
+    REQUIRE(Cmd("input ctrl-r joystick/x 0"));
+
+    REQUIRE(Cmd("input ctrl-r a/click 1"));
+    CHECK(WaitFor([&] { return g_session.Digital(jump, right).bState; }));
+    REQUIRE(Cmd("input ctrl-r a/click 0"));
+    CHECK(WaitFor([&] { return !g_session.Digital(jump, right).bState; }));
+
+    REQUIRE(Cmd("input ctrl-r trigger/value 1"));
+    REQUIRE(Cmd("input ctrl-r trigger/click 1"));
+    CHECK(WaitFor([&] { return g_session.Digital(interact, right).bState; }));
+    CHECK(WaitFor([&] { return std::fabs(g_session.Analog(trigger_axis, right).x - 1.0f) < 0.02f; }));
+    REQUIRE(Cmd("input ctrl-r trigger/click 0"));
+    REQUIRE(Cmd("input ctrl-r trigger/value 0"));
+    CHECK(WaitFor([&] { return !g_session.Digital(interact, right).bState; }));
+
+    // VRChat binds grab to the grip as a button, which SteamVR derives from
+    // the grip value (threshold), so the value is set together with the click.
+    REQUIRE(Cmd("input ctrl-l grip/value 1"));
+    REQUIRE(Cmd("input ctrl-l grip/click 1"));
+    CHECK(WaitFor([&] { return g_session.Digital(grab, left).bState; }));
+    REQUIRE(Cmd("input ctrl-l grip/click 0"));
+    REQUIRE(Cmd("input ctrl-l grip/value 0"));
+    CHECK(WaitFor([&] { return !g_session.Digital(grab, left).bState; }));
+
+    REQUIRE(Cmd("input ctrl-l b/click 1"));
+    CHECK(WaitFor([&] { return g_session.Digital(menu, left).bState; }));
+    REQUIRE(Cmd("input ctrl-l b/click 0"));
 }
 
 int main(int argc, char** argv) {

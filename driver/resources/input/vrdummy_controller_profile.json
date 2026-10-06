@@ -49,5 +49,10 @@
       "order": 7
     }
   },
-  "default_bindings": []
+  "default_bindings": [
+    {
+      "app_key": "steam.app.438100",
+      "binding_url": "vrdummy_controller_vrchat_bindings.json"
+    }
+  ]
 }

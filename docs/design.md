@@ -105,8 +105,12 @@ JSON 用クレートの追加を避けるため，制御コマンドは空白区
 ## 4. コントローラ種別とバインディング
 
 他社識別子（既存機種の controller type 文字列）を名乗らず，独自の入力プロファイル
-`vrdummy_controller` を定義する．VRChat 向け既定バインディングはドライバに同梱する方針
-だが，アクション名の検証を要するため初期版では空とし，統合試験時に追加する．
+`vrdummy_controller` を定義する．VRChat 向け既定バインディング
+（`driver/resources/input/vrdummy_controller_vrchat_bindings.json`，app key `steam.app.438100`）は
+`scripts/bindings/generate_vrchat_bindings.py` が VRChat 同梱の Valve Index 用バインディングから
+生成する．thumbstick → joystick，trackpad の touch → joystick の touch，grip の grab モード →
+grip の click に写像し，skeleton は落とす．アクション名は VRChat のアクションマニフェストで検証する．
+VRChat 側のマニフェストが更新されたら再生成する．
 
 ## 5. 依存
 

@@ -13,8 +13,9 @@ use eframe::egui;
 use vrdummy_core::command::controller_component_names;
 use vrdummy_core::control::{ControlServer, SharedEngine};
 use vrdummy_core::engine::Reply;
+use vrdummy_core::world::quat_to_euler_deg;
 use vrdummy_core::{Config, Engine, logging, presets};
-use vrdummy_protocol::device_ids;
+use vrdummy_protocol::{controller_components, device_ids};
 
 const DRAG_SPEED: f64 = 0.005;
 
@@ -336,25 +337,45 @@ impl App {
             }
         });
         self.execute_all(cmds);
-        if self
-            .output
-            .last()
-            .is_some_and(|s| s.starts_with("> preset"))
-        {
-            self.refresh_from_world();
-        }
     }
 
+    /// Copies the engine's world into the widgets, so that changes made
+    /// through the control pipe or presets are shown. Called every frame;
+    /// widget edits are executed immediately, so the world already holds
+    /// the value a widget is being dragged to.
     fn refresh_from_world(&mut self) {
         let e = self.engine.lock().expect("engine lock");
         let w = e.world();
         let pos = |id: u16| w.pose(id).map_or([0.0; 3], |p| p.position);
+        let euler = |id: u16| {
+            w.pose(id)
+                .map_or([0.0; 3], |p| quat_to_euler_deg(p.rotation))
+        };
         self.hmd_position.value = pos(device_ids::HMD);
-        self.left.position.value = pos(device_ids::CONTROLLER_LEFT);
-        self.right.position.value = pos(device_ids::CONTROLLER_RIGHT);
+        self.hmd_euler.value = euler(device_ids::HMD);
+        for (panel, id) in [
+            (&mut self.left, device_ids::CONTROLLER_LEFT),
+            (&mut self.right, device_ids::CONTROLLER_RIGHT),
+        ] {
+            panel.position.value = pos(id);
+            panel.euler.value = euler(id);
+            let input = |component: u16| w.inputs.get(&(id, component)).copied().unwrap_or(0.0);
+            for (_, component, state) in &mut panel.buttons {
+                *state = input(*component) != 0.0;
+            }
+            panel.joystick = [
+                input(controller_components::JOYSTICK_X),
+                input(controller_components::JOYSTICK_Y),
+            ];
+            panel.trigger = input(controller_components::TRIGGER_VALUE);
+            panel.grip = input(controller_components::GRIP_VALUE);
+        }
         for (i, t) in self.trackers.iter_mut().enumerate() {
             t.value = pos(device_ids::TRACKER_BASE + i as u16);
         }
+        self.ipd_mm = w.display.ipd_m * 1000.0;
+        self.projection = [w.display.projection_left, w.display.projection_right];
+        self.swap_eyes = w.display.swap_eyes;
     }
 
     fn show_display(&mut self, ui: &mut egui::Ui) {
@@ -450,6 +471,7 @@ impl eframe::App for App {
         if let Ok(mut e) = self.engine.lock() {
             e.poll();
         }
+        self.refresh_from_world();
         if self.quit.load(Ordering::SeqCst) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
@@ -457,16 +479,34 @@ impl eframe::App for App {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        egui::Panel::top("status").show(ui, |ui| self.show_connection(ui));
-        egui::Panel::right("display")
-            .default_size(360.0)
-            .show(ui, |ui| {
-                self.show_display(ui);
-                ui.separator();
-                self.show_console(ui);
-            });
         egui::CentralPanel::default().show(ui, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| self.show_devices(ui));
+            self.show_connection(ui);
+            ui.separator();
+            // Explicit two-column layout: devices on the left, display
+            // parameters and the console on the right.
+            // The root ui is unbounded, so sizes come from the viewport.
+            let screen = ui.ctx().content_rect();
+            let right_width = 380.0;
+            let left_width = (screen.width() - right_width - 48.0).max(300.0);
+            let column_height = (screen.height() - ui.cursor().top() - 16.0).max(200.0);
+            ui.horizontal_top(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_max_width(left_width);
+                    ui.set_min_width(left_width);
+                    egui::ScrollArea::vertical()
+                        .id_salt("devices")
+                        .max_height(column_height)
+                        .show(ui, |ui| self.show_devices(ui));
+                });
+                ui.separator();
+                ui.vertical(|ui| {
+                    ui.set_max_width(right_width);
+                    ui.set_min_width(right_width);
+                    self.show_display(ui);
+                    ui.separator();
+                    self.show_console(ui);
+                });
+            });
         });
     }
 }
@@ -516,7 +556,7 @@ fn main() -> eframe::Result {
     };
 
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1100.0, 760.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 860.0]),
         ..Default::default()
     };
     eframe::run_native(

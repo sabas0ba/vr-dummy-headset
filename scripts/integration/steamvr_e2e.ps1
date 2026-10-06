@@ -26,6 +26,7 @@ param(
     [string]$E2E = "",
     [string]$Feeder = "",
     [string]$SteamVRDir = "C:\Program Files (x86)\Steam\steamapps\common\SteamVR",
+    [string]$VRChatDir = "C:\Program Files (x86)\Steam\steamapps\common\VRChat\VRChat_Data\StreamingAssets\SteamVR",
     [string]$JUnit = "",
     [switch]$KeepRunning
 )
@@ -87,10 +88,29 @@ try {
     }
 
     Step "e2e scenarios" {
-        $args = @("--no-colors")
+        $args = @("--no-colors", "-tce=S9*")
         if ($JUnit -ne "") { $args += @("--reporters=junit", "--out=$JUnit") }
         & $E2E @args
         Expect "vrdummy_e2e scenarios" ($LASTEXITCODE -eq 0)
+    }
+
+    # S9 needs VRChat's action manifest, shipped with the game. The e2e app
+    # identifies itself as VRChat so that the driver's default binding loads.
+    $vrchatActions = Join-Path $VRChatDir "actions.json"
+    if (Test-Path $vrchatActions) {
+        Step "e2e scenario S9: VRChat default bindings" {
+            $env:VRDUMMY_E2E_VRCHAT_ACTIONS = $vrchatActions
+            try {
+                $args = @("--no-colors", "-tc=S9*")
+                if ($JUnit -ne "") { $args += @("--reporters=junit", "--out=" + [System.IO.Path]::ChangeExtension($JUnit, ".vrchat.xml")) }
+                & $E2E @args
+                Expect "VRChat bindings" ($LASTEXITCODE -eq 0)
+            } finally {
+                Remove-Item Env:\VRDUMMY_E2E_VRCHAT_ACTIONS -ErrorAction SilentlyContinue
+            }
+        }
+    } else {
+        Write-Host "== S9 skipped: VRChat not found at $VRChatDir"
     }
 
     Step "scenario file via vrdummy-cli scenario" {

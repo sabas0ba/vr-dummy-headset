@@ -35,6 +35,22 @@ pub fn quat_from_euler_deg(yaw: f64, pitch: f64, roll: f64) -> Quat {
     quat_mul(quat_mul(qy, qx), qz)
 }
 
+/// Yaw, pitch and roll in degrees of a quaternion, inverse of
+/// [`quat_from_euler_deg`] (Y-X-Z intrinsic order, see docs/coordinates.md).
+pub fn quat_to_euler_deg(q: Quat) -> [f64; 3] {
+    let [qw, qx, qy, qz] = quat_normalize(q);
+    // Rotation matrix elements needed for the Y-X-Z decomposition.
+    let m02 = 2.0 * (qx * qz + qw * qy);
+    let m22 = 1.0 - 2.0 * (qx * qx + qy * qy);
+    let m12 = 2.0 * (qy * qz - qw * qx);
+    let m10 = 2.0 * (qx * qy + qw * qz);
+    let m11 = 1.0 - 2.0 * (qx * qx + qz * qz);
+    let yaw = m02.atan2(m22).to_degrees();
+    let pitch = (-m12).clamp(-1.0, 1.0).asin().to_degrees();
+    let roll = m10.atan2(m11).to_degrees();
+    [yaw, pitch, roll]
+}
+
 /// Normalises a quaternion; identity if the norm is zero.
 pub fn quat_normalize(q: Quat) -> Quat {
     let n = (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]).sqrt();
@@ -197,6 +213,21 @@ mod tests {
         let q = quat_from_euler_deg(90.0, 0.0, 0.0);
         let s = std::f64::consts::FRAC_1_SQRT_2;
         assert!(approx(q, [s, 0.0, s, 0.0]));
+    }
+
+    #[test]
+    fn euler_round_trip() {
+        for (yaw, pitch, roll) in [
+            (0.0, 0.0, 0.0),
+            (90.0, 0.0, 0.0),
+            (20.0, -15.0, 0.0),
+            (-45.0, 30.0, 10.0),
+        ] {
+            let e = quat_to_euler_deg(quat_from_euler_deg(yaw, pitch, roll));
+            assert!((e[0] - yaw).abs() < 1e-6, "yaw {yaw}: {e:?}");
+            assert!((e[1] - pitch).abs() < 1e-6, "pitch {pitch}: {e:?}");
+            assert!((e[2] - roll).abs() < 1e-6, "roll {roll}: {e:?}");
+        }
     }
 
     #[test]

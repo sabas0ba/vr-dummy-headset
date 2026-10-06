@@ -58,6 +58,7 @@ SteamVR 非依存の結合試験は 2 箇所にある．
 | S6 | トラッカーの追跡喪失と復帰 |
 | S7 | 制御パイプ経由の連続コマンド（移動，回転，プリセット） |
 | S8 | シャペロンが較正済み，standing 原点 = raw 原点，プレイエリア 3 m × 3 m，ユニバース ID |
+| S9 | VRChat 向け既定バインディング: E2E アプリが VRChat の app key を名乗り VRChat のアクションマニフェストを読み込み，move / rotate / jump / interact / grab / menu / trigger_axis にフィーダの入力が到達（VRChat がインストールされている場合のみ） |
 
 加えてスクリプトが `vrdummy_probe chaperone` による初回確定，`vrdummy-cli scenario` による
 シナリオファイル再生，フィーダ切断時の追跡喪失，SteamVR 再起動後のシャペロン設定の保持を
