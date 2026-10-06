@@ -69,11 +69,10 @@ impl OscSender {
     /// Sends one message.
     pub fn send(&self, address: &str, args: &[OscArg]) -> io::Result<()> {
         let packet = encode_message(address, args);
-        let addr = self
-            .target
-            .to_socket_addrs()?
-            .next()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "OSC target did not resolve"))?;
+        let addr =
+            self.target.to_socket_addrs()?.next().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::NotFound, "OSC target did not resolve")
+            })?;
         self.socket.send_to(&packet, addr).map(|_| ())
     }
 }
@@ -99,7 +98,11 @@ mod tests {
     fn mixed_arguments() {
         let bytes = encode_message(
             "/a",
-            &[OscArg::Float(0.5), OscArg::Str("hi".to_owned()), OscArg::Bool(true)],
+            &[
+                OscArg::Float(0.5),
+                OscArg::Str("hi".to_owned()),
+                OscArg::Bool(true),
+            ],
         );
         let expected: Vec<u8> = [
             b"/a\0\0".as_slice(),

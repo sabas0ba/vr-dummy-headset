@@ -55,8 +55,12 @@ enum Subcommand {
     },
 }
 
-fn take_value(args: &mut std::iter::Peekable<std::vec::IntoIter<String>>, flag: &str) -> Result<String, String> {
-    args.next().ok_or_else(|| format!("{flag} requires a value"))
+fn take_value(
+    args: &mut std::iter::Peekable<std::vec::IntoIter<String>>,
+    flag: &str,
+) -> Result<String, String> {
+    args.next()
+        .ok_or_else(|| format!("{flag} requires a value"))
 }
 
 fn parse_args(argv: Vec<String>) -> Result<(GlobalOptions, Subcommand), String> {
@@ -135,7 +139,8 @@ fn load_config(global: &GlobalOptions) -> Result<Config, String> {
 
 fn init_logging(global: &GlobalOptions, config: &Config) -> Result<(), String> {
     let level_name = global.level.as_deref().unwrap_or(&config.log.level);
-    let level = logging::parse_level(level_name).ok_or_else(|| format!("unknown log level: {level_name}"))?;
+    let level = logging::parse_level(level_name)
+        .ok_or_else(|| format!("unknown log level: {level_name}"))?;
     let file = global
         .log_file
         .clone()
@@ -151,10 +156,17 @@ fn print_reply(reply: &Reply) {
     }
 }
 
-fn run(config: Config, record: Option<&Path>, serve_control: bool, read_stdin: bool) -> Result<(), String> {
+fn run(
+    config: Config,
+    record: Option<&Path>,
+    serve_control: bool,
+    read_stdin: bool,
+) -> Result<(), String> {
     let mut engine = Engine::new(config);
     if let Some(path) = record {
-        engine.start_recording(path).map_err(|e| format!("record: {e}"))?;
+        engine
+            .start_recording(path)
+            .map_err(|e| format!("record: {e}"))?;
         log::info!("recording to {}", path.display());
     }
     if !engine.try_connect() {
@@ -165,8 +177,17 @@ fn run(config: Config, record: Option<&Path>, serve_control: bool, read_stdin: b
 
     let mut control_server = None;
     if serve_control {
-        let name = engine.lock().map_err(|_| "engine lock")?.config().control.pipe_name.clone();
-        control_server = Some(ControlServer::start(&name, Arc::clone(&engine), Arc::clone(&quit)).map_err(|e| e.to_string())?);
+        let name = engine
+            .lock()
+            .map_err(|_| "engine lock")?
+            .config()
+            .control
+            .pipe_name
+            .clone();
+        control_server = Some(
+            ControlServer::start(&name, Arc::clone(&engine), Arc::clone(&quit))
+                .map_err(|e| e.to_string())?,
+        );
     }
 
     let (tx, rx) = mpsc::channel::<String>();
@@ -222,7 +243,9 @@ fn run_scenario(config: Config, file: &Path, record: Option<&Path>) -> Result<()
     let steps = scenario::load(file).map_err(|e| format!("{}: {e}", file.display()))?;
     let mut engine = Engine::new(config);
     if let Some(path) = record {
-        engine.start_recording(path).map_err(|e| format!("record: {e}"))?;
+        engine
+            .start_recording(path)
+            .map_err(|e| format!("record: {e}"))?;
     }
     if !engine.try_connect() {
         log::warn!("driver not reachable; commands are applied locally only");
@@ -233,7 +256,10 @@ fn run_scenario(config: Config, file: &Path, record: Option<&Path>) -> Result<()
         let due = start + Duration::from_secs_f64(step.at_s);
         while Instant::now() < due {
             engine.poll();
-            std::thread::sleep(due.saturating_duration_since(Instant::now()).min(Duration::from_millis(50)));
+            std::thread::sleep(
+                due.saturating_duration_since(Instant::now())
+                    .min(Duration::from_millis(50)),
+            );
         }
         match engine.execute(&step.command) {
             Ok(Reply::Quit) => break,
@@ -294,7 +320,9 @@ fn main() -> ExitCode {
                     Ok(())
                 }
             }
-            Err(e) => Err(format!("control pipe: {e} (is `vrdummy-cli run` or the GUI running?)")),
+            Err(e) => Err(format!(
+                "control pipe: {e} (is `vrdummy-cli run` or the GUI running?)"
+            )),
         },
     };
     match result {
@@ -318,7 +346,8 @@ mod tests {
 
     #[test]
     fn parses_run_with_options() {
-        let (g, sub) = parse_args(argv("--level debug run --record r.txt --no-stdin")).expect("parse");
+        let (g, sub) =
+            parse_args(argv("--level debug run --record r.txt --no-stdin")).expect("parse");
         assert_eq!(g.level.as_deref(), Some("debug"));
         match sub {
             Subcommand::Run {

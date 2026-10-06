@@ -21,23 +21,25 @@ jobs:
         with:
           submodules: true
 
+      # No generator is named so that CMake picks the Visual Studio version
+      # installed on the runner image; the local preset pins VS 2022.
       - name: Configure
         working-directory: driver
-        run: cmake --preset msvc-x64
+        run: cmake -S . -B build/ci -A x64 -DVRDUMMY_BUILD_TESTS=ON -DVRDUMMY_WARNINGS_AS_ERRORS=ON
 
       - name: Build
         working-directory: driver
-        run: cmake --build --preset msvc-x64
+        run: cmake --build build/ci --config Release
 
       - name: Test
         working-directory: driver
-        run: ctest --preset msvc-x64
+        run: ctest --test-dir build/ci -C Release --output-on-failure
 
       - name: Upload driver folder
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: driver_vrdummy
-          path: driver/build/msvc-x64/vrdummy
+          path: driver/build/ci/vrdummy
           if-no-files-found: error
 
   feeder:
@@ -83,6 +85,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        env:
+          # The action's container has its own toolchain; ignore rust-toolchain.toml there.
+          RUSTUP_TOOLCHAIN: stable
         with:
           manifest-path: feeder/Cargo.toml
           command: check

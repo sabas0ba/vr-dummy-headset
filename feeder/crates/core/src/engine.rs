@@ -52,7 +52,11 @@ impl std::fmt::Display for EngineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Command(e) => write!(f, "{e}"),
-            Self::UnknownPreset(n) => write!(f, "unknown preset: {n} (available: {})", presets::NAMES.join(", ")),
+            Self::UnknownPreset(n) => write!(
+                f,
+                "unknown preset: {n} (available: {})",
+                presets::NAMES.join(", ")
+            ),
             Self::NotConnected => write!(f, "not connected to driver"),
             Self::Io(e) => write!(f, "io: {e}"),
         }
@@ -155,7 +159,11 @@ impl Engine {
         if let Some(client) = &self.client {
             while let Some(msg) = client.try_recv() {
                 if let Message::Log(l) = msg {
-                    logging::log_driver_record(logging::level_from_protocol(l.level), l.timestamp_us, &l.text);
+                    logging::log_driver_record(
+                        logging::level_from_protocol(l.level),
+                        l.timestamp_us,
+                        &l.text,
+                    );
                 }
             }
             if !client.alive() {
@@ -274,12 +282,15 @@ impl Engine {
 
     /// One-line summary used by `status`.
     pub fn status_line(&self) -> String {
-        let hmd = self
-            .world
-            .pose(device_ids::HMD)
-            .map_or_else(|| "none".to_owned(), |p| {
-                format!("[{:.3} {:.3} {:.3}]", p.position[0], p.position[1], p.position[2])
-            });
+        let hmd = self.world.pose(device_ids::HMD).map_or_else(
+            || "none".to_owned(),
+            |p| {
+                format!(
+                    "[{:.3} {:.3} {:.3}]",
+                    p.position[0], p.position[1], p.position[2]
+                )
+            },
+        );
         format!(
             "connected={} devices={} hmd={} ipd={:.4} swap={}",
             self.connected(),
@@ -321,7 +332,12 @@ impl Engine {
         Ok(())
     }
 
-    fn send_input(&mut self, device_id: u16, component_id: u16, value: f32) -> Result<(), EngineError> {
+    fn send_input(
+        &mut self,
+        device_id: u16,
+        component_id: u16,
+        value: f32,
+    ) -> Result<(), EngineError> {
         let kind = match DeviceRef::Id(device_id) {
             DeviceRef::Id(device_ids::CONTROLLER_LEFT | device_ids::CONTROLLER_RIGHT)
                 if controller_component_is_scalar(component_id) =>
@@ -347,7 +363,8 @@ impl Engine {
     /// Resends every pose, input value and display parameter.
     pub fn sync_all(&mut self) -> Result<(), EngineError> {
         self.send_all_poses()?;
-        let inputs: Vec<((u16, u16), f32)> = self.world.inputs.iter().map(|(k, v)| (*k, *v)).collect();
+        let inputs: Vec<((u16, u16), f32)> =
+            self.world.inputs.iter().map(|(k, v)| (*k, *v)).collect();
         for ((device, component), value) in inputs {
             self.send_input(device, component, value)?;
         }
@@ -369,7 +386,10 @@ mod tests {
     #[test]
     fn commands_update_world_without_connection() {
         let mut e = engine();
-        assert!(matches!(e.execute_line("pos hmd 0 1.7 0.5"), Ok(Reply::Ok(_))));
+        assert!(matches!(
+            e.execute_line("pos hmd 0 1.7 0.5"),
+            Ok(Reply::Ok(_))
+        ));
         assert_eq!(e.world().pose(0).map(|p| p.position), Some([0.0, 1.7, 0.5]));
         e.execute_line("move hmd 1 0 0").expect("move");
         assert_eq!(e.world().pose(0).map(|p| p.position), Some([1.0, 1.7, 0.5]));
@@ -392,8 +412,14 @@ mod tests {
     #[test]
     fn parse_errors_surface() {
         let mut e = engine();
-        assert!(matches!(e.execute_line("fly"), Err(EngineError::Command(_))));
-        assert!(matches!(e.execute_line("preset fly"), Err(EngineError::UnknownPreset(_))));
+        assert!(matches!(
+            e.execute_line("fly"),
+            Err(EngineError::Command(_))
+        ));
+        assert!(matches!(
+            e.execute_line("preset fly"),
+            Err(EngineError::UnknownPreset(_))
+        ));
     }
 
     #[test]

@@ -54,7 +54,10 @@ impl DriverClient {
                     );
                 }
                 client.devices = ack.devices;
-                log::info!("connected to driver on {path} ({} devices)", client.devices.len());
+                log::info!(
+                    "connected to driver on {path} ({} devices)",
+                    client.devices.len()
+                );
                 Ok(client)
             }
             Ok(other) => Err(io::Error::other(format!(

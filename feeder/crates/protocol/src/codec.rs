@@ -211,7 +211,10 @@ pub fn encode(msg: &Message) -> Vec<u8> {
         Message::Goodbye => {}
     }
     let payload_len = w.buf.len() - HEADER_LEN;
-    assert!(payload_len <= MAX_PAYLOAD_LEN, "payload exceeds MAX_PAYLOAD_LEN");
+    assert!(
+        payload_len <= MAX_PAYLOAD_LEN,
+        "payload exceeds MAX_PAYLOAD_LEN"
+    );
     let len = u32::try_from(payload_len).expect("payload length fits in u32");
     w.buf[0..4].copy_from_slice(&len.to_le_bytes());
     w.buf[4..6].copy_from_slice(&(msg.msg_type() as u16).to_le_bytes());
@@ -259,8 +262,8 @@ pub fn decode(buf: &[u8]) -> Result<(Message, usize), DecodeError> {
     if header.version != PROTOCOL_VERSION {
         return Err(DecodeError::VersionMismatch(header.version));
     }
-    let msg_type = MsgType::from_u16(header.msg_type)
-        .ok_or(DecodeError::UnknownType(header.msg_type))?;
+    let msg_type =
+        MsgType::from_u16(header.msg_type).ok_or(DecodeError::UnknownType(header.msg_type))?;
     let payload = &buf[HEADER_LEN..frame_len];
     let msg = decode_payload(msg_type, payload)?;
     Ok((msg, frame_len))

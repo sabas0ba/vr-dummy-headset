@@ -73,7 +73,9 @@ impl DisplayState {
     /// Message carrying every field.
     pub fn to_message(&self) -> Display {
         Display {
-            flags: DisplayFlags(DisplayFlags::IPD | DisplayFlags::PROJECTION | DisplayFlags::SWAP_EYES),
+            flags: DisplayFlags(
+                DisplayFlags::IPD | DisplayFlags::PROJECTION | DisplayFlags::SWAP_EYES,
+            ),
             ipd_m: self.ipd_m,
             projection_left: self.projection_left,
             projection_right: self.projection_right,

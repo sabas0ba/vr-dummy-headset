@@ -54,12 +54,13 @@ pub fn parse(text: &str) -> Result<Vec<Step>, ScenarioError> {
         if content.is_empty() {
             continue;
         }
-        let (time, rest) = content
-            .split_once(char::is_whitespace)
-            .ok_or_else(|| ScenarioError {
-                line: line_no,
-                message: "expected '<time> <command>'".to_owned(),
-            })?;
+        let (time, rest) =
+            content
+                .split_once(char::is_whitespace)
+                .ok_or_else(|| ScenarioError {
+                    line: line_no,
+                    message: "expected '<time> <command>'".to_owned(),
+                })?;
         let at_s: f64 = time.parse().map_err(|_| ScenarioError {
             line: line_no,
             message: format!("bad time: {time}"),
@@ -97,10 +98,14 @@ mod tests {
 
     #[test]
     fn parses_timed_lines_and_skips_comments() {
-        let steps = parse("# header\n0 preset stand\n\n1.5 pos hmd 0 1.7 0 # note\n").expect("parse");
+        let steps =
+            parse("# header\n0 preset stand\n\n1.5 pos hmd 0 1.7 0 # note\n").expect("parse");
         assert_eq!(steps.len(), 2);
         assert!((steps[1].at_s - 1.5).abs() < 1e-12);
-        assert_eq!(steps[1].command, Command::Position(DeviceRef::Hmd, [0.0, 1.7, 0.0]));
+        assert_eq!(
+            steps[1].command,
+            Command::Position(DeviceRef::Hmd, [0.0, 1.7, 0.0])
+        );
         assert_eq!(steps[1].line, "pos hmd 0 1.7 0");
     }
 

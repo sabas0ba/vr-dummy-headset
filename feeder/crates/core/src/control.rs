@@ -25,7 +25,11 @@ pub struct ControlServer {
 
 impl ControlServer {
     /// Starts serving `pipe_name` on a background thread.
-    pub fn start(pipe_name: &str, engine: SharedEngine, quit_flag: Arc<AtomicBool>) -> io::Result<Self> {
+    pub fn start(
+        pipe_name: &str,
+        engine: SharedEngine,
+        quit_flag: Arc<AtomicBool>,
+    ) -> io::Result<Self> {
         let running = Arc::new(AtomicBool::new(true));
         let name = pipe_name.to_owned();
         let flag = Arc::clone(&running);
@@ -158,9 +162,20 @@ mod tests {
     #[test]
     fn handle_line_formats_replies() {
         let engine: SharedEngine = Arc::new(Mutex::new(Engine::new(Config::default())));
-        assert_eq!(handle_line(&engine, "pos hmd 0 1 0"), ("ok".to_owned(), false));
-        assert!(handle_line(&engine, "status").0.starts_with("ok connected=false"));
-        assert!(handle_line(&engine, "fly").0.starts_with("err unknown command"));
+        assert_eq!(
+            handle_line(&engine, "pos hmd 0 1 0"),
+            ("ok".to_owned(), false)
+        );
+        assert!(
+            handle_line(&engine, "status")
+                .0
+                .starts_with("ok connected=false")
+        );
+        assert!(
+            handle_line(&engine, "fly")
+                .0
+                .starts_with("err unknown command")
+        );
         assert_eq!(handle_line(&engine, "quit"), ("quit".to_owned(), true));
     }
 
@@ -170,10 +185,26 @@ mod tests {
         let engine: SharedEngine = Arc::new(Mutex::new(Engine::new(Config::default())));
         let quit = Arc::new(AtomicBool::new(false));
         let name = format!("vrdummy-test-{}", std::process::id());
-        let mut server = ControlServer::start(&name, Arc::clone(&engine), Arc::clone(&quit)).expect("start");
-        assert_eq!(send_line(&name, "pos hmd 0 2 0").expect("first reply"), "ok");
-        assert!(send_line(&name, "status").expect("second reply").starts_with("ok connected=false"));
-        assert_eq!(engine.lock().expect("lock").world().pose(0).map(|p| p.position[1]), Some(2.0));
+        let mut server =
+            ControlServer::start(&name, Arc::clone(&engine), Arc::clone(&quit)).expect("start");
+        assert_eq!(
+            send_line(&name, "pos hmd 0 2 0").expect("first reply"),
+            "ok"
+        );
+        assert!(
+            send_line(&name, "status")
+                .expect("second reply")
+                .starts_with("ok connected=false")
+        );
+        assert_eq!(
+            engine
+                .lock()
+                .expect("lock")
+                .world()
+                .pose(0)
+                .map(|p| p.position[1]),
+            Some(2.0)
+        );
         assert_eq!(send_line(&name, "quit").expect("reply"), "quit");
         assert!(quit.load(Ordering::SeqCst));
         server.stop();

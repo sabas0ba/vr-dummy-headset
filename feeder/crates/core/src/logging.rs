@@ -94,7 +94,12 @@ impl Log for JsonlLogger {
             return;
         }
         let ts = self.start.elapsed().as_micros() as u64;
-        self.write(ts, record.level(), record.target(), &record.args().to_string());
+        self.write(
+            ts,
+            record.level(),
+            record.target(),
+            &record.args().to_string(),
+        );
     }
 
     fn flush(&self) {
@@ -123,7 +128,9 @@ pub fn parse_level(name: &str) -> Option<LevelFilter> {
 /// keeps the first configuration and returns `Ok(())`.
 pub fn init(file: Option<&Path>, level: LevelFilter, stderr: bool) -> std::io::Result<()> {
     let file = match file {
-        Some(p) if !p.as_os_str().is_empty() => Some(OpenOptions::new().create(true).append(true).open(p)?),
+        Some(p) if !p.as_os_str().is_empty() => {
+            Some(OpenOptions::new().create(true).append(true).open(p)?)
+        }
         _ => None,
     };
     let logger = LOGGER.get_or_init(|| JsonlLogger {
@@ -145,7 +152,12 @@ pub fn log_driver_record(level: Level, driver_ts_us: u64, text: &str) {
     if let Some(logger) = LOGGER.get()
         && level <= log::max_level()
     {
-        logger.write(monotonic_micros(), level, "driver", &format!("[{driver_ts_us}] {text}"));
+        logger.write(
+            monotonic_micros(),
+            level,
+            "driver",
+            &format!("[{driver_ts_us}] {text}"),
+        );
     }
 }
 

@@ -104,7 +104,13 @@ fn samples() -> Vec<(&'static str, Message)> {
 #[test]
 fn fixed_layout_sizes() {
     let cases = [
-        (sizes::HELLO, Message::Hello(Hello { protocol_version: 1, client_flags: 0 })),
+        (
+            sizes::HELLO,
+            Message::Hello(Hello {
+                protocol_version: 1,
+                client_flags: 0,
+            }),
+        ),
         (sizes::POSE, Message::Pose(Pose::identity(0))),
         (
             sizes::INPUT,
@@ -128,7 +134,11 @@ fn fixed_layout_sizes() {
         ),
         (
             sizes::LOG_HEAD,
-            Message::Log(LogRecord { level: LogLevel::Info, timestamp_us: 0, text: String::new() }),
+            Message::Log(LogRecord {
+                level: LogLevel::Info,
+                timestamp_us: 0,
+                text: String::new(),
+            }),
         ),
         (0, Message::Goodbye),
     ];
@@ -143,7 +153,10 @@ fn fixed_layout_sizes() {
             serial: String::new(),
         }],
     });
-    assert_eq!(encode(&ack).len(), HEADER_LEN + sizes::HELLO_ACK_HEAD + sizes::DEVICE_INFO);
+    assert_eq!(
+        encode(&ack).len(),
+        HEADER_LEN + sizes::HELLO_ACK_HEAD + sizes::DEVICE_INFO
+    );
 }
 
 #[test]
@@ -169,11 +182,18 @@ fn golden_fixtures() {
             std::fs::write(&path, &bytes).expect("write fixture");
             continue;
         }
-        let golden = std::fs::read(&path)
-            .unwrap_or_else(|e| panic!("{}: {e} (run with VRDUMMY_UPDATE_FIXTURES=1)", path.display()));
+        let golden = std::fs::read(&path).unwrap_or_else(|e| {
+            panic!(
+                "{}: {e} (run with VRDUMMY_UPDATE_FIXTURES=1)",
+                path.display()
+            )
+        });
         assert_eq!(golden, bytes, "{name}: encoding differs from fixture");
         let (decoded, _) = decode(&golden).expect("fixture decodes");
-        assert_eq!(decoded, msg, "{name}: fixture decodes to a different message");
+        assert_eq!(
+            decoded, msg,
+            "{name}: fixture decodes to a different message"
+        );
     }
 }
 
@@ -184,7 +204,10 @@ fn decoder_resynchronises_after_bad_frames() {
     bad_version[6] = 9;
     let mut unknown_type = good.clone();
     unknown_type[4] = 200;
-    let mut malformed = encode(&Message::Hello(Hello { protocol_version: 1, client_flags: 0 }));
+    let mut malformed = encode(&Message::Hello(Hello {
+        protocol_version: 1,
+        client_flags: 0,
+    }));
     malformed[0] = 7; // payload_len 7 instead of 8
     malformed.pop();
 
@@ -195,7 +218,10 @@ fn decoder_resynchronises_after_bad_frames() {
     d.push(&good[..5]);
     assert_eq!(d.next_frame(), Some(Err(DecodeError::VersionMismatch(9))));
     assert_eq!(d.next_frame(), Some(Err(DecodeError::UnknownType(200))));
-    assert!(matches!(d.next_frame(), Some(Err(DecodeError::Malformed(_)))));
+    assert!(matches!(
+        d.next_frame(),
+        Some(Err(DecodeError::Malformed(_)))
+    ));
     assert_eq!(d.next_frame(), None);
     d.push(&good[5..]);
     assert_eq!(d.next_frame(), Some(Ok(Message::Goodbye)));

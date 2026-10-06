@@ -117,7 +117,8 @@ impl std::error::Error for ConfigError {}
 impl Config {
     /// Loads a TOML file. Missing keys take their defaults.
     pub fn load(path: &Path) -> Result<Self, ConfigError> {
-        let text = std::fs::read_to_string(path).map_err(|e| ConfigError::Io(path.to_owned(), e))?;
+        let text =
+            std::fs::read_to_string(path).map_err(|e| ConfigError::Io(path.to_owned(), e))?;
         Self::parse(&text).map_err(|e| ConfigError::Parse(path.to_owned(), e))
     }
 

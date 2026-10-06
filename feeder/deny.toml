@@ -32,6 +32,8 @@ confidence-threshold = 0.9
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Workspace crates reference each other by path without a version.
+allow-wildcard-paths = true
 highlight = "all"
 
 [sources]

@@ -26,7 +26,11 @@ struct Vec3Widget {
 
 impl Vec3Widget {
     fn new(name: &'static str, device: &'static str, value: [f64; 3]) -> Self {
-        Self { name, device, value }
+        Self {
+            name,
+            device,
+            value,
+        }
     }
 
     /// Draws the three drag values; returns a command when any changed.
@@ -36,10 +40,17 @@ impl Vec3Widget {
             ui.label(self.name);
             for (axis, v) in ["x", "y", "z"].iter().zip(self.value.iter_mut()) {
                 ui.label(*axis);
-                changed |= ui.add(egui::DragValue::new(v).speed(DRAG_SPEED).fixed_decimals(3)).changed();
+                changed |= ui
+                    .add(egui::DragValue::new(v).speed(DRAG_SPEED).fixed_decimals(3))
+                    .changed();
             }
         });
-        changed.then(|| format!("pos {} {} {} {}", self.device, self.value[0], self.value[1], self.value[2]))
+        changed.then(|| {
+            format!(
+                "pos {} {} {} {}",
+                self.device, self.value[0], self.value[1], self.value[2]
+            )
+        })
     }
 }
 
@@ -55,10 +66,17 @@ impl EulerWidget {
             ui.label("euler");
             for (axis, v) in ["yaw", "pitch", "roll"].iter().zip(self.value.iter_mut()) {
                 ui.label(*axis);
-                changed |= ui.add(egui::DragValue::new(v).speed(0.5).suffix("°")).changed();
+                changed |= ui
+                    .add(egui::DragValue::new(v).speed(0.5).suffix("°"))
+                    .changed();
             }
         });
-        changed.then(|| format!("euler {} {} {} {}", self.device, self.value[0], self.value[1], self.value[2]))
+        changed.then(|| {
+            format!(
+                "euler {} {} {} {}",
+                self.device, self.value[0], self.value[1], self.value[2]
+            )
+        })
     }
 }
 
@@ -81,7 +99,10 @@ impl ControllerPanel {
         Self {
             device,
             position: Vec3Widget::new("pos", device, position),
-            euler: EulerWidget { device, value: [0.0; 3] },
+            euler: EulerWidget {
+                device,
+                value: [0.0; 3],
+            },
             buttons,
             joystick: [0.0; 2],
             trigger: 0.0,
@@ -95,18 +116,33 @@ impl ControllerPanel {
         ui.horizontal_wrapped(|ui| {
             for (name, _, state) in &mut self.buttons {
                 if ui.toggle_value(state, *name).changed() {
-                    out.push(format!("input {} {} {}", self.device, name, u8::from(*state)));
+                    out.push(format!(
+                        "input {} {} {}",
+                        self.device,
+                        name,
+                        u8::from(*state)
+                    ));
                 }
             }
         });
         ui.horizontal(|ui| {
             ui.label("joystick");
             let mut changed = false;
-            changed |= ui.add(egui::Slider::new(&mut self.joystick[0], -1.0..=1.0).text("x")).changed();
-            changed |= ui.add(egui::Slider::new(&mut self.joystick[1], -1.0..=1.0).text("y")).changed();
+            changed |= ui
+                .add(egui::Slider::new(&mut self.joystick[0], -1.0..=1.0).text("x"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(&mut self.joystick[1], -1.0..=1.0).text("y"))
+                .changed();
             if changed {
-                out.push(format!("input {} joystick/x {}", self.device, self.joystick[0]));
-                out.push(format!("input {} joystick/y {}", self.device, self.joystick[1]));
+                out.push(format!(
+                    "input {} joystick/x {}",
+                    self.device, self.joystick[0]
+                ));
+                out.push(format!(
+                    "input {} joystick/y {}",
+                    self.device, self.joystick[1]
+                ));
             }
             if ui.button("center").clicked() {
                 self.joystick = [0.0; 2];
@@ -115,10 +151,19 @@ impl ControllerPanel {
             }
         });
         ui.horizontal(|ui| {
-            if ui.add(egui::Slider::new(&mut self.trigger, 0.0..=1.0).text("trigger")).changed() {
-                out.push(format!("input {} trigger/value {}", self.device, self.trigger));
+            if ui
+                .add(egui::Slider::new(&mut self.trigger, 0.0..=1.0).text("trigger"))
+                .changed()
+            {
+                out.push(format!(
+                    "input {} trigger/value {}",
+                    self.device, self.trigger
+                ));
             }
-            if ui.add(egui::Slider::new(&mut self.grip, 0.0..=1.0).text("grip")).changed() {
+            if ui
+                .add(egui::Slider::new(&mut self.grip, 0.0..=1.0).text("grip"))
+                .changed()
+            {
                 out.push(format!("input {} grip/value {}", self.device, self.grip));
             }
         });
@@ -246,7 +291,10 @@ impl App {
         if !devices.is_empty() {
             ui.collapsing("driver devices", |ui| {
                 for d in &devices {
-                    ui.monospace(format!("{:>2} {:?} {}", d.device_id, d.device_class, d.serial));
+                    ui.monospace(format!(
+                        "{:>2} {:?} {}",
+                        d.device_id, d.device_class, d.serial
+                    ));
                 }
             });
         }
@@ -275,7 +323,12 @@ impl App {
         ui.heading("Presets");
         ui.horizontal(|ui| {
             ui.label("height");
-            ui.add(egui::DragValue::new(&mut self.preset_height).speed(0.01).suffix(" m").range(0.5..=2.5));
+            ui.add(
+                egui::DragValue::new(&mut self.preset_height)
+                    .speed(0.01)
+                    .suffix(" m")
+                    .range(0.5..=2.5),
+            );
             for name in presets::NAMES {
                 if ui.button(*name).clicked() {
                     cmds.push(format!("preset {name} {}", self.preset_height));
@@ -283,7 +336,11 @@ impl App {
             }
         });
         self.execute_all(cmds);
-        if self.output.last().is_some_and(|s| s.starts_with("> preset")) {
+        if self
+            .output
+            .last()
+            .is_some_and(|s| s.starts_with("> preset"))
+        {
             self.refresh_from_world();
         }
     }
@@ -303,7 +360,10 @@ impl App {
     fn show_display(&mut self, ui: &mut egui::Ui) {
         let mut cmds = Vec::new();
         ui.heading("Display");
-        if ui.add(egui::Slider::new(&mut self.ipd_mm, 50.0..=80.0).text("IPD mm")).changed() {
+        if ui
+            .add(egui::Slider::new(&mut self.ipd_mm, 50.0..=80.0).text("IPD mm"))
+            .changed()
+        {
             cmds.push(format!("ipd {}", self.ipd_mm / 1000.0));
         }
         let mut proj_changed = false;
@@ -312,7 +372,9 @@ impl App {
                 ui.label(*eye);
                 for (name, v) in ["L", "R", "T", "B"].iter().zip(p.iter_mut()) {
                     ui.label(*name);
-                    proj_changed |= ui.add(egui::DragValue::new(v).speed(0.01).fixed_decimals(2)).changed();
+                    proj_changed |= ui
+                        .add(egui::DragValue::new(v).speed(0.01).fixed_decimals(2))
+                        .changed();
                 }
             });
         }
@@ -352,7 +414,11 @@ impl App {
         });
         ui.horizontal(|ui| {
             ui.add(egui::TextEdit::singleline(&mut self.record_path).desired_width(240.0));
-            let label = if self.recording { "stop recording" } else { "record" };
+            let label = if self.recording {
+                "stop recording"
+            } else {
+                "record"
+            };
             if ui.button(label).clicked() {
                 let mut e = self.engine.lock().expect("engine lock");
                 if self.recording {
@@ -369,11 +435,13 @@ impl App {
                 self.output.clear();
             }
         });
-        egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui| {
-            for line in &self.output {
-                ui.monospace(line);
-            }
-        });
+        egui::ScrollArea::vertical()
+            .stick_to_bottom(true)
+            .show(ui, |ui| {
+                for line in &self.output {
+                    ui.monospace(line);
+                }
+            });
     }
 }
 
@@ -390,11 +458,13 @@ impl eframe::App for App {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         egui::Panel::top("status").show(ui, |ui| self.show_connection(ui));
-        egui::Panel::right("display").default_size(360.0).show(ui, |ui| {
-            self.show_display(ui);
-            ui.separator();
-            self.show_console(ui);
-        });
+        egui::Panel::right("display")
+            .default_size(360.0)
+            .show(ui, |ui| {
+                self.show_display(ui);
+                ui.separator();
+                self.show_console(ui);
+            });
         egui::CentralPanel::default().show(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| self.show_devices(ui));
         });
@@ -430,7 +500,13 @@ fn main() -> eframe::Result {
     engine.try_connect();
     let engine: SharedEngine = Arc::new(Mutex::new(engine));
     let quit = Arc::new(AtomicBool::new(false));
-    let pipe_name = engine.lock().expect("engine lock").config().control.pipe_name.clone();
+    let pipe_name = engine
+        .lock()
+        .expect("engine lock")
+        .config()
+        .control
+        .pipe_name
+        .clone();
     let control = match ControlServer::start(&pipe_name, Arc::clone(&engine), Arc::clone(&quit)) {
         Ok(s) => Some(s),
         Err(e) => {

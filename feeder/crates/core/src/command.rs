@@ -164,7 +164,9 @@ pub fn component_id(device: DeviceRef, name: &str) -> Result<u16, CommandError> 
         DeviceRef::Hmd | DeviceRef::Id(device_ids::HMD) => HMD_COMPONENTS,
         DeviceRef::ControllerLeft
         | DeviceRef::ControllerRight
-        | DeviceRef::Id(device_ids::CONTROLLER_LEFT | device_ids::CONTROLLER_RIGHT) => CONTROLLER_COMPONENTS,
+        | DeviceRef::Id(device_ids::CONTROLLER_LEFT | device_ids::CONTROLLER_RIGHT) => {
+            CONTROLLER_COMPONENTS
+        }
         _ => &[],
     };
     table
@@ -252,7 +254,10 @@ impl Command {
         match verb {
             "pos" => {
                 arity("pos", &args, 4)?;
-                Ok(Self::Position(DeviceRef::parse(args[0])?, vec3(&args[1..])?))
+                Ok(Self::Position(
+                    DeviceRef::parse(args[0])?,
+                    vec3(&args[1..])?,
+                ))
             }
             "move" => {
                 arity("move", &args, 4)?;
@@ -261,7 +266,10 @@ impl Command {
             "rot" => {
                 arity("rot", &args, 5)?;
                 let d = DeviceRef::parse(args[0])?;
-                Ok(Self::Rotation(d, [num(args[1])?, num(args[2])?, num(args[3])?, num(args[4])?]))
+                Ok(Self::Rotation(
+                    d,
+                    [num(args[1])?, num(args[2])?, num(args[3])?, num(args[4])?],
+                ))
             }
             "euler" => {
                 arity("euler", &args, 4)?;
@@ -275,7 +283,8 @@ impl Command {
                 arity("input", &args, 3)?;
                 let d = DeviceRef::parse(args[0])?;
                 let c = component_id(d, args[1])?;
-                let v = flag(args[2]).map_or_else(|_| num::<f32>(args[2]), |b| Ok(f32::from(u8::from(b))))?;
+                let v = flag(args[2])
+                    .map_or_else(|_| num::<f32>(args[2]), |b| Ok(f32::from(u8::from(b))))?;
                 Ok(Self::Input(d, c, v))
             }
             "ipd" => {
@@ -301,7 +310,10 @@ impl Command {
                 if args.is_empty() {
                     return Err(CommandError::Arity("osc", 1));
                 }
-                let osc_args = args[1..].iter().map(|a| osc_arg(a)).collect::<Result<Vec<_>, _>>()?;
+                let osc_args = args[1..]
+                    .iter()
+                    .map(|a| osc_arg(a))
+                    .collect::<Result<Vec<_>, _>>()?;
                 Ok(Self::Osc(args[0].to_owned(), osc_args))
             }
             "sync" => Ok(Self::Sync),
@@ -328,20 +340,34 @@ mod tests {
     fn position_and_comments() {
         let c = Command::parse("pos hmd 0 1.7 -0.5  # standing").expect("parse");
         assert_eq!(c, Command::Position(DeviceRef::Hmd, [0.0, 1.7, -0.5]));
-        assert_eq!(Command::parse("   # only comment"), Err(CommandError::Empty));
+        assert_eq!(
+            Command::parse("   # only comment"),
+            Err(CommandError::Empty)
+        );
     }
 
     #[test]
     fn input_by_name_and_id() {
         assert_eq!(
             Command::parse("input ctrl-r a/click 1"),
-            Ok(Command::Input(DeviceRef::ControllerRight, controller_components::A_CLICK, 1.0))
+            Ok(Command::Input(
+                DeviceRef::ControllerRight,
+                controller_components::A_CLICK,
+                1.0
+            ))
         );
         assert_eq!(
             Command::parse("input ctrl-l joystick/x -0.5"),
-            Ok(Command::Input(DeviceRef::ControllerLeft, controller_components::JOYSTICK_X, -0.5))
+            Ok(Command::Input(
+                DeviceRef::ControllerLeft,
+                controller_components::JOYSTICK_X,
+                -0.5
+            ))
         );
-        assert_eq!(Command::parse("input hmd 1 on"), Ok(Command::Input(DeviceRef::Hmd, 1, 1.0)));
+        assert_eq!(
+            Command::parse("input hmd 1 on"),
+            Ok(Command::Input(DeviceRef::Hmd, 1, 1.0))
+        );
         assert!(matches!(
             Command::parse("input hmd a/click 1"),
             Err(CommandError::BadComponent(_))
@@ -352,11 +378,17 @@ mod tests {
     fn projection_and_display() {
         assert_eq!(
             Command::parse("proj -1.2 0.8 -1 1 -0.8 1.2 -1 1"),
-            Ok(Command::Projection([-1.2, 0.8, -1.0, 1.0], [-0.8, 1.2, -1.0, 1.0]))
+            Ok(Command::Projection(
+                [-1.2, 0.8, -1.0, 1.0],
+                [-0.8, 1.2, -1.0, 1.0]
+            ))
         );
         assert_eq!(Command::parse("ipd 0.07"), Ok(Command::Ipd(0.07)));
         assert_eq!(Command::parse("swap on"), Ok(Command::SwapEyes(true)));
-        assert_eq!(Command::parse("proj 1 2 3"), Err(CommandError::Arity("proj", 8)));
+        assert_eq!(
+            Command::parse("proj 1 2 3"),
+            Err(CommandError::Arity("proj", 8))
+        );
     }
 
     #[test]
@@ -365,15 +397,26 @@ mod tests {
             Command::parse("osc /input/Jump i:1 f:0.5 s:hi T"),
             Ok(Command::Osc(
                 "/input/Jump".to_owned(),
-                vec![OscArg::Int(1), OscArg::Float(0.5), OscArg::Str("hi".to_owned()), OscArg::Bool(true)]
+                vec![
+                    OscArg::Int(1),
+                    OscArg::Float(0.5),
+                    OscArg::Str("hi".to_owned()),
+                    OscArg::Bool(true)
+                ]
             ))
         );
-        assert!(matches!(Command::parse("osc /x 1"), Err(CommandError::BadOscArg(_))));
+        assert!(matches!(
+            Command::parse("osc /x 1"),
+            Err(CommandError::BadOscArg(_))
+        ));
     }
 
     #[test]
     fn preset_with_optional_height() {
-        assert_eq!(Command::parse("preset tpose"), Ok(Command::Preset("tpose".to_owned(), None)));
+        assert_eq!(
+            Command::parse("preset tpose"),
+            Ok(Command::Preset("tpose".to_owned(), None))
+        );
         assert_eq!(
             Command::parse("preset sit 1.5"),
             Ok(Command::Preset("sit".to_owned(), Some(1.5)))
@@ -382,6 +425,9 @@ mod tests {
 
     #[test]
     fn unknown_verb() {
-        assert_eq!(Command::parse("fly hmd"), Err(CommandError::UnknownVerb("fly".to_owned())));
+        assert_eq!(
+            Command::parse("fly hmd"),
+            Err(CommandError::UnknownVerb("fly".to_owned()))
+        );
     }
 }
