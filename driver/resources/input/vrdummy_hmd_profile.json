@@ -1,0 +1,18 @@
+{
+  "jsonid": "input_profile",
+  "controller_type": "vrdummy_hmd",
+  "input_bindingui_mode": "hmd",
+  "input_source": {
+    "/input/system": {
+      "type": "button",
+      "binding_image_point": [250, 60],
+      "order": 1
+    },
+    "/proximity": {
+      "type": "proximity",
+      "binding_image_point": [250, 120],
+      "order": 2
+    }
+  },
+  "default_bindings": []
+}

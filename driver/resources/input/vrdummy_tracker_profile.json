@@ -1,0 +1,7 @@
+{
+  "jsonid": "input_profile",
+  "controller_type": "vrdummy_tracker",
+  "input_bindingui_mode": "single_device",
+  "input_source": {},
+  "default_bindings": []
+}

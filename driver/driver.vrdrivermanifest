@@ -1,0 +1,9 @@
+{
+  "alwaysActivate": true,
+  "name": "vrdummy",
+  "directory": "",
+  "resourceOnly": false,
+  "hmd_presence": [
+    "*.*"
+  ]
+}

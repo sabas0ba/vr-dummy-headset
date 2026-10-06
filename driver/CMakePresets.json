@@ -1,0 +1,42 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "msvc-x64",
+      "displayName": "MSVC x64 (Visual Studio 2022)",
+      "generator": "Visual Studio 17 2022",
+      "architecture": { "value": "x64", "strategy": "set" },
+      "binaryDir": "${sourceDir}/build/msvc-x64",
+      "cacheVariables": {
+        "VRDUMMY_BUILD_TESTS": "ON",
+        "VRDUMMY_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "ninja-x64",
+      "displayName": "Ninja x64 (run inside a VS developer shell)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/ninja-x64",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VRDUMMY_BUILD_TESTS": "ON",
+        "VRDUMMY_WARNINGS_AS_ERRORS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "msvc-x64", "configurePreset": "msvc-x64", "configuration": "Release" },
+    { "name": "msvc-x64-debug", "configurePreset": "msvc-x64", "configuration": "Debug" },
+    { "name": "ninja-x64", "configurePreset": "ninja-x64" }
+  ],
+  "testPresets": [
+    {
+      "name": "msvc-x64",
+      "configurePreset": "msvc-x64",
+      "configuration": "Release",
+      "output": { "outputOnFailure": true }
+    },
+    { "name": "ninja-x64", "configurePreset": "ninja-x64", "output": { "outputOnFailure": true } }
+  ]
+}
