@@ -65,6 +65,12 @@ pub fn parse(text: &str) -> Result<Vec<Step>, ScenarioError> {
             line: line_no,
             message: format!("bad time: {time}"),
         })?;
+        if std::time::Duration::try_from_secs_f64(at_s).is_err() {
+            return Err(ScenarioError {
+                line: line_no,
+                message: format!("time must be finite, non-negative and representable: {time}"),
+            });
+        }
         if at_s < last {
             return Err(ScenarioError {
                 line: line_no,
@@ -113,6 +119,23 @@ mod tests {
     fn rejects_decreasing_time() {
         let err = parse("1 status\n0.5 status\n").expect_err("must fail");
         assert_eq!(err.line, 2);
+    }
+
+    #[test]
+    fn rejects_invalid_times_with_line_number() {
+        for time in ["NaN", "inf", "-inf", "-1", "1e300"] {
+            let err = parse(&format!("# header\n0 status\n{time} status\n"))
+                .expect_err("invalid time");
+            assert_eq!(err.line, 3, "{time}");
+            assert!(err.message.contains("time must be"), "{err}");
+        }
+    }
+
+    #[test]
+    fn accepts_zero_equal_and_fractional_times() {
+        let steps = parse("0 status\n0 status\n0.125 status\n").expect("valid times");
+        assert_eq!(steps.len(), 3);
+        assert!((steps[2].at_s - 0.125).abs() < f64::EPSILON);
     }
 
     #[test]

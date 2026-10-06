@@ -132,6 +132,7 @@ impl Engine {
         let timeout = Duration::from_millis(self.config.driver.handshake_timeout_ms);
         match DriverClient::connect(&self.config.driver.pipe_name, timeout) {
             Ok(client) => {
+                self.world.reconcile_devices(client.devices());
                 self.client = Some(client);
                 log::debug!("initial sync");
                 if let Err(e) = self.sync_all() {
@@ -264,6 +265,9 @@ impl Engine {
                 if !presets::apply(&mut self.world, name, *height) {
                     return Err(EngineError::UnknownPreset(name.clone()));
                 }
+                if let Some(client) = &self.client {
+                    self.world.reconcile_devices(client.devices());
+                }
                 self.send_all_poses()?;
             }
             Command::Osc(address, args) => {
@@ -357,6 +361,14 @@ impl Engine {
     }
 
     fn send_display(&mut self) -> Result<(), EngineError> {
+        if self.client.as_ref().is_some_and(|client| {
+            !client
+                .devices()
+                .iter()
+                .any(|device| device.device_class == vrdummy_protocol::DeviceClass::Hmd)
+        }) {
+            return Ok(());
+        }
         let msg = Message::Display(self.world.display.to_message());
         self.send(&msg)
     }

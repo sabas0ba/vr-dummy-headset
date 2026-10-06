@@ -18,7 +18,6 @@ pub type SharedEngine = Arc<Mutex<Engine>>;
 
 /// Running control server.
 pub struct ControlServer {
-    pipe_name: String,
     running: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
@@ -38,22 +37,28 @@ impl ControlServer {
             .spawn(move || serve(&name, &engine, &flag, &quit_flag))?;
         log::info!("control pipe listening on {}", win32::pipe_path(pipe_name));
         Ok(Self {
-            pipe_name: pipe_name.to_owned(),
             running,
             thread: Some(thread),
         })
     }
 
-    /// Stops the server. Unblocks the accept call by connecting to it.
+    /// Stops the server and cancels pending pipe I/O on its dedicated thread.
     pub fn stop(&mut self) {
         if !self.running.swap(false, Ordering::SeqCst) {
             return;
         }
-        let _ = File::options()
-            .read(true)
-            .write(true)
-            .open(win32::pipe_path(&self.pipe_name));
         if let Some(t) = self.thread.take() {
+            // Cancellation only affects an I/O already in progress. Repeat until
+            // exit to cover stop racing with entry into accept, read or write.
+            while !t.is_finished() {
+                #[cfg(windows)]
+                {
+                    use std::os::windows::io::AsRawHandle;
+                    // SAFETY: the JoinHandle owns a live thread handle until join.
+                    unsafe { win32::CancelSynchronousIo(t.as_raw_handle().cast()) };
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
             let _ = t.join();
         }
     }
@@ -82,6 +87,9 @@ fn serve(pipe_name: &str, engine: &SharedEngine, running: &AtomicBool, quit_flag
         let file = match win32::accept_named_pipe(pipe_name) {
             Ok(f) => f,
             Err(e) => {
+                if !running.load(Ordering::SeqCst) {
+                    break;
+                }
                 log::error!("control pipe failed: {e}");
                 std::thread::sleep(std::time::Duration::from_secs(1));
                 continue;
@@ -99,6 +107,9 @@ fn serve(pipe_name: &str, engine: &SharedEngine, running: &AtomicBool, quit_flag
         };
         let reader = BufReader::new(file);
         for line in reader.lines() {
+            if !running.load(Ordering::SeqCst) {
+                break;
+            }
             let Ok(line) = line else { break };
             let (reply, quit) = handle_line(engine, &line);
             if writeln!(writer, "{reply}").is_err() || writer.flush().is_err() {
@@ -109,8 +120,10 @@ fn serve(pipe_name: &str, engine: &SharedEngine, running: &AtomicBool, quit_flag
                 break;
             }
         }
-        let _ = writer.flush();
-        win32::disconnect_named_pipe(&writer);
+        if running.load(Ordering::SeqCst) {
+            let _ = writer.flush();
+            win32::disconnect_named_pipe(&writer);
+        }
     }
 }
 
@@ -177,6 +190,66 @@ mod tests {
                 .starts_with("err unknown command")
         );
         assert_eq!(handle_line(&engine, "quit"), ("quit".to_owned(), true));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn stop_cancels_idle_and_partial_clients() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        for (index, partial) in ["", "pos hmd 0 2"].iter().enumerate() {
+            let engine = Arc::new(Mutex::new(Engine::new(Config::default())));
+            let name = format!("vrdummy-stop-{}-{index}", std::process::id());
+            let mut server =
+                ControlServer::start(&name, engine, Arc::new(AtomicBool::new(false)))
+                    .expect("start");
+            let mut client = open_client(&name, Duration::from_secs(2)).expect("connect");
+            // A round trip establishes that the server is handling this client.
+            writeln!(client, "status").expect("status");
+            let mut reply = String::new();
+            BufReader::new(client.try_clone().expect("clone"))
+                .read_line(&mut reply)
+                .expect("reply");
+            assert!(reply.starts_with("ok "));
+            client.write_all(partial.as_bytes()).expect("partial line");
+            let (tx, rx) = mpsc::channel();
+            let stopper = std::thread::spawn(move || {
+                server.stop();
+                server.stop();
+                let _ = tx.send(());
+            });
+            let stopped = rx.recv_timeout(Duration::from_secs(2));
+            // Release the client on failure so the old implementation can exit.
+            drop(client);
+            assert!(stopped.is_ok(), "stop blocked with partial line {partial:?}");
+            stopper.join().expect("stop thread");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn stop_cancels_accept_and_startup_races() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        for index in 0..16 {
+            let engine = Arc::new(Mutex::new(Engine::new(Config::default())));
+            let name = format!("vrdummy-stop-accept-{}-{index}", std::process::id());
+            let mut server =
+                ControlServer::start(&name, engine, Arc::new(AtomicBool::new(false)))
+                    .expect("start");
+            if index % 2 == 0 {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            let (tx, rx) = mpsc::channel();
+            let stopper = std::thread::spawn(move || {
+                server.stop();
+                let _ = tx.send(());
+            });
+            rx.recv_timeout(Duration::from_secs(2)).expect("bounded stop");
+            stopper.join().expect("stop thread");
+        }
     }
 
     #[cfg(windows)]

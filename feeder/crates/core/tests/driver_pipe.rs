@@ -19,7 +19,7 @@ use vrdummy_protocol::{
 
 /// Serves one client: answers Hello, forwards a log line, then relays every
 /// decoded message until the client disconnects.
-fn mock_driver_session(pipe_name: &str, received: &mpsc::Sender<Message>) {
+fn mock_driver_session(pipe_name: &str, received: &mpsc::Sender<Message>, tracker_count: u16) {
     let file = win32::accept_named_pipe(pipe_name).expect("accept");
     let mut writer = file.try_clone().expect("clone");
     let mut reader = file;
@@ -35,20 +35,26 @@ fn mock_driver_session(pipe_name: &str, received: &mpsc::Sender<Message>) {
             let msg = frame.expect("valid frame");
             if let Message::Hello(h) = &msg {
                 assert_eq!(h.protocol_version, u32::from(PROTOCOL_VERSION));
+                let mut devices = vec![
+                    DeviceInfo {
+                        device_id: 0,
+                        device_class: DeviceClass::Hmd,
+                        serial: "MOCK-HMD".to_owned(),
+                    },
+                    DeviceInfo {
+                        device_id: 1,
+                        device_class: DeviceClass::ControllerLeft,
+                        serial: "MOCK-L".to_owned(),
+                    },
+                ];
+                devices.extend((3..3 + tracker_count).map(|id| DeviceInfo {
+                    device_id: id,
+                    device_class: DeviceClass::Tracker,
+                    serial: format!("MOCK-TRACKER-{id}"),
+                }));
                 let ack = Message::HelloAck(HelloAck {
                     protocol_version: u32::from(PROTOCOL_VERSION),
-                    devices: vec![
-                        DeviceInfo {
-                            device_id: 0,
-                            device_class: DeviceClass::Hmd,
-                            serial: "MOCK-HMD".to_owned(),
-                        },
-                        DeviceInfo {
-                            device_id: 1,
-                            device_class: DeviceClass::ControllerLeft,
-                            serial: "MOCK-L".to_owned(),
-                        },
-                    ],
+                    devices,
                 });
                 writer.write_all(&encode(&ack)).expect("write ack");
                 writer
@@ -113,8 +119,8 @@ fn handshake_sync_commands_and_reconnect() {
     let server_name = pipe_name.clone();
     let server = std::thread::spawn(move || {
         // Two sessions: the first ends with Goodbye, the second with the drop.
-        mock_driver_session(&server_name, &tx);
-        mock_driver_session(&server_name, &tx);
+        mock_driver_session(&server_name, &tx, 6);
+        mock_driver_session(&server_name, &tx, 0);
     });
 
     let mut config = Config::default();
@@ -127,8 +133,12 @@ fn handshake_sync_commands_and_reconnect() {
         "engine must connect to the mock driver"
     );
     assert!(engine.connected());
-    assert_eq!(engine.driver_devices().len(), 2);
+    assert_eq!(engine.driver_devices().len(), 8);
     assert_eq!(engine.driver_devices()[1].serial, "MOCK-L");
+    assert_eq!(
+        engine.world().device_ids().collect::<Vec<_>>(),
+        vec![0, 1, 3, 4, 5, 6, 7, 8]
+    );
 
     // Initial sync: one pose per world device, then the display message.
     let initial = collect_until(
@@ -146,6 +156,17 @@ fn handshake_sync_commands_and_reconnect() {
         .count();
     assert_eq!(hello, 1);
     assert_eq!(poses, engine.world().device_ids().count());
+    let pose_ids: Vec<_> = initial
+        .iter()
+        .filter_map(|m| match m {
+            Message::Pose(p) => {
+                assert!(p.flags.pose_valid());
+                Some(p.device_id)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(pose_ids, vec![0, 1, 3, 4, 5, 6, 7, 8]);
     assert!(matches!(initial.last(), Some(Message::Display(_))));
 
     // Commands are forwarded with their values.
@@ -213,6 +234,17 @@ fn handshake_sync_commands_and_reconnect() {
         _ => None,
     });
     assert_eq!(hmd_after, Some([0.0, 1.9, -0.5]));
+    assert_eq!(engine.world().device_ids().collect::<Vec<_>>(), vec![0, 1]);
+    let resynced_ids: Vec<_> = resynced
+        .iter()
+        .filter_map(|m| match m {
+            Message::Pose(p) => Some(p.device_id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(resynced_ids, vec![0, 1]);
+    engine.execute_line("preset stand").expect("preset");
+    assert_eq!(engine.world().device_ids().collect::<Vec<_>>(), vec![0, 1]);
 
     // Driver log lines are drained by poll() without error.
     engine.poll();

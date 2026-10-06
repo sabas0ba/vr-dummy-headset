@@ -36,6 +36,8 @@ pub const ERROR_PIPE_BUSY: DWORD = 231;
 #[cfg(windows)]
 #[link(name = "kernel32")]
 unsafe extern "system" {
+    /// `CancelSynchronousIo`.
+    pub fn CancelSynchronousIo(thread: HANDLE) -> BOOL;
     /// `CreateNamedPipeW`.
     pub fn CreateNamedPipeW(
         name: *const u16,

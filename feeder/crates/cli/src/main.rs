@@ -254,15 +254,16 @@ fn run_scenario(config: Config, file: &Path, record: Option<&Path>) -> Result<()
     let start = Instant::now();
     let mut failures = 0usize;
     for step in &steps {
-        let due = start + Duration::from_secs_f64(step.at_s);
-        while Instant::now() < due {
+        let at = Duration::try_from_secs_f64(step.at_s)
+            .map_err(|e| format!("invalid scenario time {}: {e}", step.at_s))?;
+        while start.elapsed() < at {
             engine.poll();
             std::thread::sleep(
-                due.saturating_duration_since(Instant::now())
+                at.saturating_sub(start.elapsed())
                     .min(Duration::from_millis(50)),
             );
         }
-        match engine.execute(&step.command) {
+        match engine.execute_line(&step.line) {
             Ok(Reply::Quit) => break,
             Ok(reply) => {
                 log::info!("{:.3} {}", step.at_s, step.line);
@@ -371,6 +372,37 @@ mod tests {
             Subcommand::Set { line } => assert_eq!(line, "pos hmd 0 1 0"),
             _ => panic!("wrong subcommand"),
         }
+    }
+
+    #[test]
+    fn scenario_playback_records_replayable_commands() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../../.tmp")
+            .join(format!("scenario-record-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("test directory");
+        let input = dir.join("input.txt");
+        let output = dir.join("output.txt");
+        std::fs::write(
+            &input,
+            "0 pos hmd 0 1.8 0\n0 move hmd 1 0 0\n0 status\n0 quit\n0 move hmd 5 0 0\n",
+        )
+        .expect("scenario");
+        let mut config = Config::default();
+        config.driver.pipe_name = format!("vrdummy-no-driver-{}", std::process::id());
+        run_scenario(config, &input, Some(&output)).expect("playback");
+        let recorded = scenario::load(&output).expect("replayable recording");
+        assert_eq!(recorded.len(), 2);
+        assert_eq!(recorded[0].line, "pos hmd 0 1.8 0");
+        assert_eq!(recorded[1].line, "move hmd 1 0 0");
+        let mut replay = Engine::new(Config::default());
+        for step in recorded {
+            replay.execute(&step.command).expect("replay");
+        }
+        assert_eq!(
+            replay.world().pose(0).expect("hmd").position,
+            [1.0, 1.8, 0.0]
+        );
+        std::fs::remove_dir_all(dir).expect("cleanup");
     }
 
     #[test]

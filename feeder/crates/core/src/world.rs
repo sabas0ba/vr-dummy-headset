@@ -2,7 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use vrdummy_protocol::{Display, DisplayFlags, Pose, PoseFlags, TrackingResult, device_ids};
+use vrdummy_protocol::{
+    DeviceInfo, Display, DisplayFlags, Pose, PoseFlags, TrackingResult, device_ids,
+};
 
 /// Quaternion as (w, x, y, z).
 pub type Quat = [f64; 4];
@@ -170,8 +172,21 @@ impl World {
     }
 
     /// Pose of a device, if it exists.
+    ///
+    /// Devices absent from the last handshake have no pose.
     pub fn pose(&self, device_id: u16) -> Option<&Pose> {
         self.poses.get(&device_id)
+    }
+
+    /// Matches the driver's device list, preserving state for retained ids.
+    pub fn reconcile_devices(&mut self, devices: &[DeviceInfo]) {
+        let ids: std::collections::BTreeSet<_> =
+            devices.iter().map(|device| device.device_id).collect();
+        self.poses.retain(|id, _| ids.contains(id));
+        self.inputs.retain(|(id, _), _| ids.contains(id));
+        for id in ids {
+            self.poses.entry(id).or_insert_with(|| Pose::identity(id));
+        }
     }
 
     /// Mutable pose of a device, created at the origin if it does not exist.
@@ -267,6 +282,39 @@ mod tests {
         let w = World::new(2);
         assert_eq!(w.device_ids().collect::<Vec<_>>(), vec![0, 1, 2, 3, 4]);
         assert_eq!(w.pose(0).map(|p| p.position[1]), Some(1.6));
+    }
+
+    #[test]
+    fn reconciliation_adds_all_reported_trackers_and_preserves_state() {
+        use vrdummy_protocol::DeviceClass;
+
+        let mut world = World::default();
+        world.set_position(3, [1.0, 2.0, 3.0]);
+        world.inputs.insert((3, 0), 1.0);
+        world.inputs.insert((1, 1), 1.0);
+        let devices: Vec<_> = (3..9)
+            .map(|id| DeviceInfo {
+                device_id: id,
+                device_class: DeviceClass::Tracker,
+                serial: format!("TRACKER-{id}"),
+            })
+            .collect();
+        world.reconcile_devices(&devices);
+        assert_eq!(
+            world.device_ids().collect::<Vec<_>>(),
+            (3..9).collect::<Vec<_>>()
+        );
+        assert_eq!(world.pose(3).expect("retained").position, [1.0, 2.0, 3.0]);
+        assert_eq!(world.inputs.get(&(3, 0)), Some(&1.0));
+        assert!(!world.inputs.contains_key(&(1, 1)));
+        for id in 6..9 {
+            assert!(world.pose(id).expect("new tracker").flags.pose_valid());
+        }
+        world.reconcile_devices(&devices[..1]);
+        assert_eq!(world.device_ids().collect::<Vec<_>>(), vec![3]);
+        world.reconcile_devices(&[]);
+        assert_eq!(world.device_ids().count(), 0);
+        assert!(world.inputs.is_empty());
     }
 
     #[test]
