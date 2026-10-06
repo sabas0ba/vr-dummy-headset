@@ -1,0 +1,16 @@
+# Build outputs
+/driver/build/
+/feeder/target/
+
+# Temporary work inside the repository
+/.tmp/
+
+# Editors
+/.vs/
+/.vscode/
+/.idea/
+*.swp
+
+# Local logs and recordings
+*.jsonl
+!/tests/**/*.jsonl
