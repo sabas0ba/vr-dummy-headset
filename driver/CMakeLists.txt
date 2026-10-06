@@ -116,4 +116,38 @@ if(VRDUMMY_BUILD_PROBE AND WIN32)
       "${VRDUMMY_OPENVR_DIR}/bin/win64/openvr_api.dll" "$<TARGET_FILE_DIR:vrdummy_probe>/openvr_api.dll"
     COMMENT "Copying openvr_api.dll next to vrdummy_probe"
   )
+
+  # Shared scene rendering for the VR client tools (Direct3D 11, no extra deps).
+  add_library(vrdummy_scene STATIC tools/vr/renderer.cpp tools/vr/renderer.h tools/vr/scene.h)
+  target_include_directories(vrdummy_scene PUBLIC tools/vr)
+  target_include_directories(vrdummy_scene SYSTEM PUBLIC "${VRDUMMY_OPENVR_DIR}/headers")
+  target_link_libraries(vrdummy_scene PUBLIC "${VRDUMMY_OPENVR_DIR}/lib/win64/openvr_api.lib" d3d11 dxgi d3dcompiler)
+  vrdummy_set_warnings(vrdummy_scene)
+
+  # Copies openvr_api.dll and the action manifest next to a client tool.
+  function(vrdummy_add_client_assets target)
+    add_custom_command(TARGET ${target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${VRDUMMY_OPENVR_DIR}/bin/win64/openvr_api.dll" "$<TARGET_FILE_DIR:${target}>/openvr_api.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/e2e/actions.json" "$<TARGET_FILE_DIR:${target}>/actions.json"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/e2e/bindings_vrdummy_controller.json"
+        "$<TARGET_FILE_DIR:${target}>/bindings_vrdummy_controller.json"
+      COMMENT "Copying openvr_api.dll and the action manifest next to ${target}"
+    )
+  endfunction()
+
+  # End-to-end scenarios: a scene application with its own action manifest.
+  add_executable(vrdummy_e2e tools/e2e/vrdummy_e2e.cpp)
+  target_include_directories(vrdummy_e2e SYSTEM PRIVATE "${VRDUMMY_DOCTEST_DIR}")
+  target_link_libraries(vrdummy_e2e PRIVATE vrdummy_scene)
+  vrdummy_set_warnings(vrdummy_e2e)
+  vrdummy_add_client_assets(vrdummy_e2e)
+
+  # Interactive viewer: shows devices and inputs in the headset and on the console.
+  add_executable(vrdummy_viewer tools/vr/vrdummy_viewer.cpp)
+  target_link_libraries(vrdummy_viewer PRIVATE vrdummy_scene)
+  vrdummy_set_warnings(vrdummy_viewer)
+  vrdummy_add_client_assets(vrdummy_viewer)
 endif()

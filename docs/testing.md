@@ -35,9 +35,31 @@ SteamVR 非依存の結合試験は 2 箇所にある．
 - ドライバ側: `vrdummy_host_test`（上記）．実 DLL + フェイク OpenVR + 実パイプ．
 - フィーダ側: `feeder/crates/core/tests/driver_pipe.rs`．モックドライバ + 実パイプ．
 
-SteamVR 実機での確認は `scripts/integration/steamvr_check.ps1` で行う（手動，CI 外）．
-OpenVR クライアント `vrdummy_probe`（`driver/tools/`）が各デバイスのポーズを読み取り，
-フィーダで設定した位置と照合する．手順は `scripts/integration/README.md` を参照．
+## SteamVR 実機での E2E（手動，CI 外）
+
+`scripts/integration/steamvr_e2e.ps1` が登録・起動・フィーダ常駐・E2E 実行・後始末を行う．
+
+- `vrdummy_e2e`（`driver/tools/e2e/`）: OpenVR の Scene アプリ．自前のアクションマニフェストと
+  `vrdummy_controller` 用バインディングを読み込み，制御パイプでフィーダを操作し，OpenVR 側の
+  観測値を doctest のシナリオ S1〜S7 で検証する．フレームを描画・提出するため，コンポジタは
+  本アプリを前面のシーンアプリとして扱い，入力が届く（描画しないと dashboard が開き入力が
+  奪われる）．起動時に standing / seated 空間を raw 空間に一致させる（`docs/coordinates.md`）．
+- `vrdummy_viewer`（`driver/tools/vr/`）: 同じ描画で全デバイスと入力を HMD 内に表示し，
+  コンソールにも位置・オイラー角・入力値を出す目視確認用アプリ．
+- `vrdummy_probe`: 列挙とポーズ読み取りの小型クライアント．
+
+| シナリオ | 内容 |
+|---|---|
+| S1 | デバイス列挙，クラス，左右の役割 |
+| S2 | 全デバイスの静的な位置とヨー |
+| S3 | HMD の連続移動（単調増加と到達） |
+| S4 | ボタン，トリガ，グリップ，スティックが SteamVR Input のアクションに到達 |
+| S5 | IPD 変更が眼の変換に反映 |
+| S6 | トラッカーの追跡喪失と復帰 |
+| S7 | 制御パイプ経由の連続コマンド（移動，回転，プリセット） |
+
+加えてスクリプトが `vrdummy-cli scenario` によるシナリオファイル再生と，フィーダ切断時の
+追跡喪失を確認する．手順は `scripts/integration/README.md` を参照．
 
 ## CI（GitHub Actions，windows-latest）
 

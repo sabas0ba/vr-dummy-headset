@@ -4,13 +4,19 @@ SteamVR から認識される仮想デバイス一式（HMD，左右コントロ
 それらを操作するフィーダアプリケーション．VR 環境（主に VRChat）のデバッグ用．
 
 - 設計: [docs/design.md](docs/design.md)
+- 座標系: [docs/coordinates.md](docs/coordinates.md)
 - IPC プロトコル: [docs/protocol.md](docs/protocol.md)
+- 制御コマンド: [docs/control.md](docs/control.md)
 - 試験方針: [docs/testing.md](docs/testing.md)
+- 統合試験と E2E: [scripts/integration/README.md](scripts/integration/README.md)
 
 ## 構成
 
 ```
 driver/                 OpenVR ドライバ driver_vrdummy（C++ / CMake）
+driver/tests/host/      ドライバ DLL をフェイク OpenVR でロードする結合試験（SteamVR 不要）
+driver/tools/           OpenVR クライアント: vrdummy_probe，vrdummy_e2e（E2E シナリオ），
+                        vrdummy_viewer（HMD 内とコンソールにデバイスと入力を表示）
 feeder/                 フィーダ（Rust workspace: protocol, core, cli, gui）
 third_party/openvr/     OpenVR SDK（サブモジュール）
 third_party/doctest/    doctest 単一ヘッダ

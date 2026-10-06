@@ -62,7 +62,11 @@ public:
 protected:
     void SetupProperties(vr::PropertyContainerHandle_t container) override;
     void SetupInputs(vr::PropertyContainerHandle_t container) override;
-    bool should_apply_head_model() const override { return true; }
+    // With the head model enabled vrserver offsets the reported HMD position
+    // by a neck model that depends on orientation, so commanded positions
+    // would no longer be reproduced exactly. A debugging device reports what
+    // it was told.
+    bool should_apply_head_model() const override { return false; }
     bool keep_pose_when_disconnected() const override { return true; }
     vr::DriverPose_t InitialPose() const override;
 
