@@ -201,9 +201,8 @@ mod tests {
         for (index, partial) in ["", "pos hmd 0 2"].iter().enumerate() {
             let engine = Arc::new(Mutex::new(Engine::new(Config::default())));
             let name = format!("vrdummy-stop-{}-{index}", std::process::id());
-            let mut server =
-                ControlServer::start(&name, engine, Arc::new(AtomicBool::new(false)))
-                    .expect("start");
+            let mut server = ControlServer::start(&name, engine, Arc::new(AtomicBool::new(false)))
+                .expect("start");
             let mut client = open_client(&name, Duration::from_secs(2)).expect("connect");
             // A round trip establishes that the server is handling this client.
             writeln!(client, "status").expect("status");
@@ -222,7 +221,10 @@ mod tests {
             let stopped = rx.recv_timeout(Duration::from_secs(2));
             // Release the client on failure so the old implementation can exit.
             drop(client);
-            assert!(stopped.is_ok(), "stop blocked with partial line {partial:?}");
+            assert!(
+                stopped.is_ok(),
+                "stop blocked with partial line {partial:?}"
+            );
             stopper.join().expect("stop thread");
         }
     }
@@ -236,9 +238,8 @@ mod tests {
         for index in 0..16 {
             let engine = Arc::new(Mutex::new(Engine::new(Config::default())));
             let name = format!("vrdummy-stop-accept-{}-{index}", std::process::id());
-            let mut server =
-                ControlServer::start(&name, engine, Arc::new(AtomicBool::new(false)))
-                    .expect("start");
+            let mut server = ControlServer::start(&name, engine, Arc::new(AtomicBool::new(false)))
+                .expect("start");
             if index % 2 == 0 {
                 std::thread::sleep(Duration::from_millis(20));
             }
@@ -247,7 +248,8 @@ mod tests {
                 server.stop();
                 let _ = tx.send(());
             });
-            rx.recv_timeout(Duration::from_secs(2)).expect("bounded stop");
+            rx.recv_timeout(Duration::from_secs(2))
+                .expect("bounded stop");
             stopper.join().expect("stop thread");
         }
     }

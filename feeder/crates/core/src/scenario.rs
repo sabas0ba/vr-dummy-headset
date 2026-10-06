@@ -124,8 +124,8 @@ mod tests {
     #[test]
     fn rejects_invalid_times_with_line_number() {
         for time in ["NaN", "inf", "-inf", "-1", "1e300"] {
-            let err = parse(&format!("# header\n0 status\n{time} status\n"))
-                .expect_err("invalid time");
+            let err =
+                parse(&format!("# header\n0 status\n{time} status\n")).expect_err("invalid time");
             assert_eq!(err.line, 3, "{time}");
             assert!(err.message.contains("time must be"), "{err}");
         }
