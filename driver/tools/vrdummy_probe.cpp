@@ -5,6 +5,9 @@
 //   vrdummy_probe expect <serial> x y z [tol]  exit 0 if the device is tracking
 //                                            within tol (default 0.01 m)
 //   vrdummy_probe wait <serial> [timeout_s]  wait until the device exists
+//   vrdummy_probe chaperone [size_m]         set standing/seated origin = raw
+//                                            origin and a square play area
+//   vrdummy_probe chaperone-state            print calibration state and area
 //
 // Runs as a background application, so SteamVR must already be running.
 #include <chrono>
@@ -16,8 +19,40 @@
 #include <thread>
 
 #include "openvr.h"
+#include "scene.h"
 
 namespace {
+
+const char* CalibrationName(vr::ChaperoneCalibrationState s) {
+    switch (s) {
+        case vr::ChaperoneCalibrationState_OK: return "ok";
+        case vr::ChaperoneCalibrationState_Warning: return "warning";
+        case vr::ChaperoneCalibrationState_Warning_BaseStationMayHaveMoved: return "warning_base_station_moved";
+        case vr::ChaperoneCalibrationState_Warning_BaseStationRemoved: return "warning_base_station_removed";
+        case vr::ChaperoneCalibrationState_Warning_SeatedBoundsInvalid: return "warning_seated_invalid";
+        case vr::ChaperoneCalibrationState_Error: return "error";
+        case vr::ChaperoneCalibrationState_Error_BaseStationUninitialized: return "error_uninitialized";
+        case vr::ChaperoneCalibrationState_Error_BaseStationConflict: return "error_conflict";
+        case vr::ChaperoneCalibrationState_Error_PlayAreaInvalid: return "error_play_area_invalid";
+        case vr::ChaperoneCalibrationState_Error_CollisionBoundsInvalid: return "error_bounds_invalid";
+        default: return "?";
+    }
+}
+
+// Prints "calibration=<state> play_area=<x>x<z> standing_origin=[x y z] universe=<id>".
+void PrintChaperoneState(vr::IVRSystem* sys) {
+    auto* chap = vr::VRChaperone();
+    float sx = 0, sz = 0;
+    const bool has_area = chap->GetPlayAreaSize(&sx, &sz);
+    vr::HmdMatrix34_t standing{};
+    vr::VRChaperoneSetup()->GetWorkingStandingZeroPoseToRawTrackingPose(&standing);
+    vr::ETrackedPropertyError err = vr::TrackedProp_Success;
+    const uint64_t universe = sys->GetUint64TrackedDeviceProperty(vr::k_unTrackedDeviceIndex_Hmd, vr::Prop_CurrentUniverseId_Uint64, &err);
+    std::printf("calibration=%s play_area=%.2fx%.2f standing_origin=[%.3f %.3f %.3f] universe=%llu\n",
+                CalibrationName(chap->GetCalibrationState()), has_area ? static_cast<double>(sx) : 0.0,
+                has_area ? static_cast<double>(sz) : 0.0, static_cast<double>(standing.m[0][3]), static_cast<double>(standing.m[1][3]),
+                static_cast<double>(standing.m[2][3]), static_cast<unsigned long long>(err == vr::TrackedProp_Success ? universe : 0));
+}
 
 const char* ClassName(vr::ETrackedDeviceClass c) {
     switch (c) {
@@ -87,7 +122,9 @@ struct Session {
 };
 
 int Usage() {
-    std::fprintf(stderr, "usage: vrdummy_probe list | pose <serial> | expect <serial> x y z [tol] | wait <serial> [timeout_s]\n");
+    std::fprintf(stderr,
+                 "usage: vrdummy_probe list | pose <serial> | expect <serial> x y z [tol] | wait <serial> [timeout_s]\n"
+                 "       vrdummy_probe chaperone [size_m] | chaperone-state\n");
     return 2;
 }
 
@@ -115,6 +152,22 @@ int main(int argc, char** argv) {
 
     Session s;
     if (!s.Init()) return 1;
+
+    if (cmd == "chaperone") {
+        const float size = argc >= 3 ? static_cast<float>(std::atof(argv[2])) : 3.0f;
+        if (!vrscene::SetupChaperoneIdentity(size)) {
+            std::fprintf(stderr, "chaperone commit failed\n");
+            return 1;
+        }
+        vr::VRChaperone()->ReloadInfo();
+        PrintChaperoneState(s.sys);
+        return 0;
+    }
+    if (cmd == "chaperone-state") {
+        PrintChaperoneState(s.sys);
+        return vr::VRChaperone()->GetCalibrationState() == vr::ChaperoneCalibrationState_OK ? 0 : 1;
+    }
+
     vr::TrackedDevicePose_t poses[vr::k_unMaxTrackedDeviceCount];
     s.Poses(poses);
 

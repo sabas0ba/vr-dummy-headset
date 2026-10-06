@@ -118,6 +118,8 @@ DriverSettings DeviceProvider::ReadSettings() {
     d.render_height = GetIntSetting(kDisplaySection, "render_height", d.render_height);
     d.display_frequency = GetFloatSetting(kDisplaySection, "display_frequency", d.display_frequency);
     d.ipd_m = GetFloatSetting(kDisplaySection, "ipd_meters", d.ipd_m);
+    const int32_t universe = GetIntSetting(kSettingsSection, "universe_id", static_cast<int32_t>(d.universe_id));
+    if (universe > 0) d.universe_id = static_cast<uint64_t>(universe);
     d.seconds_from_vsync_to_photons =
         GetFloatSetting(kDisplaySection, "seconds_from_vsync_to_photons", d.seconds_from_vsync_to_photons);
     return s;

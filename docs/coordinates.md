@@ -8,8 +8,14 @@
 | 空間 | 定義 |
 |---|---|
 | ドライバ空間 | ドライバが `DriverPose_t` で報告する空間．`qWorldFromDriverRotation` は単位四元数，`vecWorldFromDriverTranslation` は 0 とする．したがって **ドライバ空間 = SteamVR raw 空間**（`TrackingUniverseRawAndUncalibrated`）． |
-| standing 空間 | シャペロン設定（ルームセットアップ）で定まる床原点の空間．VRChat をはじめ多くのアプリはこれを使う．`vrdummy_e2e` と `vrdummy_viewer` は起動時に `IVRChaperoneSetup` で **standing 原点 = raw 原点**，プレイエリア 3 m × 3 m を書き込みコミットするため，試験中は standing = raw である． |
+| standing 空間 | シャペロン設定（ルームセットアップ）で定まる床原点の空間．VRChat をはじめ多くのアプリはこれを使う．`vrdummy_probe chaperone [size_m]` が `IVRChaperoneSetup` で **standing 原点 = raw 原点**，正方形のプレイエリア（既定 3 m × 3 m）を書き込みコミットする．`vrdummy_e2e` と `vrdummy_viewer` も起動時に同じ設定をコミットする． |
 | seated 空間 | 同様に seated 原点 = raw 原点に設定する． |
+
+ドライバは HMD に固定のトラッキングユニバース ID（`Prop_CurrentUniverseId_Uint64`，既定
+0x5652444D，`default.vrsettings` の `universe_id`）を報告する．SteamVR はシャペロン設定をこの ID
+をキーに `config/chaperone_info.vrchap` へ保存するため，一度コミットすれば SteamVR を再起動しても
+standing 空間とプレイエリアが保持され，「ルームセットアップを実行してください」の通知も出ない．
+ID を変えると別のユニバースとして扱われ，再度コミットが必要になる．
 
 フィーダのコマンド（`pos`，`rot`，`euler`，プリセット）はすべてドライバ空間の値である．
 

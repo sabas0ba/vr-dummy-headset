@@ -69,6 +69,14 @@ try {
         Expect "virtual HMD visible to OpenVR clients" ($LASTEXITCODE -eq 0)
     }
 
+    Step "chaperone: standing origin = raw origin, 3 m x 3 m" {
+        & $Probe chaperone 3
+        Expect "chaperone committed" ($LASTEXITCODE -eq 0)
+        $state = (& $Probe chaperone-state) -join ""
+        Write-Host "  $state"
+        Expect "calibration ok" ($state -match "calibration=ok")
+    }
+
     Step "start feeder" {
         $script:feederProc = Start-Process -FilePath $Feeder -ArgumentList @("--level", "debug", "run", "--no-stdin") `
             -PassThru -WindowStyle Hidden -RedirectStandardError $feederLog -RedirectStandardOutput (Join-Path $env:TEMP "vrdummy-feeder-e2e.out")
@@ -103,6 +111,20 @@ try {
         Expect "tracker out of range" ($line -match "result=out_of_range")
         $hmd = (& $Probe pose VRDUMMY-HMD-0) -join ""
         Expect "hmd keeps its last pose" ($hmd -match "valid=1")
+    }
+
+    if (-not $steamvrWasRunning) {
+        Step "chaperone persists across a SteamVR restart" {
+            Get-Process -Name vrmonitor, vrserver, vrcompositor, vrdashboard, vrwebhelper, vrstartup -ErrorAction SilentlyContinue | Stop-Process -Force
+            Start-Sleep -Seconds 5
+            Start-Process -FilePath $vrstartup | Out-Null
+            & $Probe wait VRDUMMY-HMD-0 90 | Out-Null
+            Start-Sleep -Seconds 2
+            $state = (& $Probe chaperone-state) -join ""
+            Write-Host "  $state"
+            Expect "calibration ok after restart without re-commit" ($state -match "calibration=ok")
+            Expect "play area kept" ($state -match "play_area=3\.00x3\.00")
+        }
     }
 } finally {
     if ($null -ne $feederProc -and -not $feederProc.HasExited) { Stop-Process -Id $feederProc.Id -Force }

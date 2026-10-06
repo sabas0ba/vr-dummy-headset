@@ -110,6 +110,7 @@ void HmdDevice::SetupProperties(vr::PropertyContainerHandle_t container) {
     props->SetBoolProperty(container, vr::Prop_IsOnDesktop_Bool, false);
     props->SetBoolProperty(container, vr::Prop_DisplayDebugMode_Bool, true);
     props->SetBoolProperty(container, vr::Prop_ContainsProximitySensor_Bool, true);
+    props->SetUint64Property(container, vr::Prop_CurrentUniverseId_Uint64, config_.universe_id);
     props->SetStringProperty(container, vr::Prop_ControllerType_String, "vrdummy_hmd");
     props->SetStringProperty(container, vr::Prop_InputProfilePath_String, "{vrdummy}/input/vrdummy_hmd_profile.json");
 }

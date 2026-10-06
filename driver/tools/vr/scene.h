@@ -113,8 +113,9 @@ inline std::string StringProp(vr::IVRSystem* sys, uint32_t index, vr::ETrackedDe
 }
 
 // Makes the standing and seated universes coincide with the raw tracking
-// space and defines a 3 m x 3 m play area (docs/coordinates.md).
-inline bool SetupChaperoneIdentity() {
+// space and defines a square play area (docs/coordinates.md). SteamVR
+// persists the result under the driver's universe id.
+inline bool SetupChaperoneIdentity(float size_m = 3.0f) {
     auto* setup = vr::VRChaperoneSetup();
     if (!setup) return false;
     setup->RevertWorkingCopy();
@@ -122,8 +123,8 @@ inline bool SetupChaperoneIdentity() {
     identity.m[0][0] = identity.m[1][1] = identity.m[2][2] = 1.0f;
     setup->SetWorkingStandingZeroPoseToRawTrackingPose(&identity);
     setup->SetWorkingSeatedZeroPoseToRawTrackingPose(&identity);
-    setup->SetWorkingPlayAreaSize(3.0f, 3.0f);
-    const float h = 1.5f;
+    setup->SetWorkingPlayAreaSize(size_m, size_m);
+    const float h = size_m / 2.0f;
     vr::HmdQuad_t walls[4] = {};
     const float corners[5][2] = {{-h, -h}, {h, -h}, {h, h}, {-h, h}, {-h, -h}};
     for (int i = 0; i < 4; ++i) {

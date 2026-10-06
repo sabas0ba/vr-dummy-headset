@@ -30,11 +30,16 @@
 
 1. `vrpathreg adddriver` でドライバを登録
 2. SteamVR を起動し，`vrdummy_probe wait VRDUMMY-HMD-0` で仮想 HMD の出現を待つ
-3. `vrdummy-cli run --no-stdin` を常駐させる（制御パイプ）
-4. `vrdummy_e2e` を実行（シナリオ S1〜S7，`docs/testing.md`）
-5. `vrdummy-cli scenario scenarios/walk.txt` を再生し，最終位置を `vrdummy_probe expect` で照合
-6. フィーダ終了後にトラッカーが追跡外になり HMD が最終ポーズを保つことを確認
-7. SteamVR を終了し，登録を解除（`-KeepRunning` で省略）
+3. `vrdummy_probe chaperone 3` で standing 原点 = raw 原点，3 m × 3 m を確定（`docs/coordinates.md`）
+4. `vrdummy-cli run --no-stdin` を常駐させる（制御パイプ）
+5. `vrdummy_e2e` を実行（シナリオ S1〜S8，`docs/testing.md`）
+6. `vrdummy-cli scenario scenarios/walk.txt` を再生し，最終位置を `vrdummy_probe expect` で照合
+7. フィーダ終了後にトラッカーが追跡外になり HMD が最終ポーズを保つことを確認
+8. SteamVR を再起動し，シャペロン設定が再コミットなしで保持されることを確認
+9. SteamVR を終了し，登録を解除（`-KeepRunning` で省略）
+
+初回の利用では手順 1〜3 に相当する `install_driver.ps1` → SteamVR 起動 → `vrdummy_probe chaperone`
+を一度行えば，以後は SteamVR がユニバース ID をキーに設定を保持する．
 
 `vrdummy_e2e` と `vrdummy_probe` は SteamVR が起動していない状態では失敗する．
 

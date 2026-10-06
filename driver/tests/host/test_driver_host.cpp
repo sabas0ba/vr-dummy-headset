@@ -160,6 +160,7 @@ TEST_CASE("driver loads, registers devices and serves the feeder pipe") {
         CHECK(ctx.properties.GetString(0, vr::Prop_SerialNumber_String) == "TEST-HMD-0");
         CHECK(ctx.properties.GetFloat(0, vr::Prop_UserIpdMeters_Float) == doctest::Approx(0.064f));
         CHECK(ctx.properties.GetBool(0, vr::Prop_ContainsProximitySensor_Bool));
+        CHECK(ctx.properties.GetUint64(0, vr::Prop_CurrentUniverseId_Uint64) == 0x5652444Dull);
         CHECK(ctx.properties.GetString(0, vr::Prop_InputProfilePath_String) == "{vrdummy}/input/vrdummy_hmd_profile.json");
         CHECK(ctx.properties.GetInt32(1, vr::Prop_ControllerRoleHint_Int32) == vr::TrackedControllerRole_LeftHand);
         CHECK(ctx.properties.GetInt32(2, vr::Prop_ControllerRoleHint_Int32) == vr::TrackedControllerRole_RightHand);

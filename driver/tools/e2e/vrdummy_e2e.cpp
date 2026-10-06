@@ -403,6 +403,24 @@ TEST_CASE("S7 scenario file replayed by the feeder") {
     CHECK(WaitFor([&] { return Position(g_session.Pose(static_cast<uint32_t>(d.hmd)).mDeviceToAbsoluteTracking).y < 1.3; }));
 }
 
+TEST_CASE("S8 chaperone: calibrated, standing origin at raw origin, play area as configured") {
+    auto* chap = vr::VRChaperone();
+    CHECK(WaitFor([&] { return chap->GetCalibrationState() == vr::ChaperoneCalibrationState_OK; }, 3000ms));
+    float sx = 0, sz = 0;
+    REQUIRE(chap->GetPlayAreaSize(&sx, &sz));
+    CHECK(sx == doctest::Approx(3.0f));
+    CHECK(sz == doctest::Approx(3.0f));
+    vr::HmdMatrix34_t standing{};
+    REQUIRE(vr::VRChaperoneSetup()->GetWorkingStandingZeroPoseToRawTrackingPose(&standing));
+    CHECK(standing.m[0][3] == doctest::Approx(0.0f));
+    CHECK(standing.m[1][3] == doctest::Approx(0.0f));
+    CHECK(standing.m[2][3] == doctest::Approx(0.0f));
+    vr::ETrackedPropertyError err = vr::TrackedProp_Success;
+    const uint64_t universe = g_session.sys->GetUint64TrackedDeviceProperty(vr::k_unTrackedDeviceIndex_Hmd, vr::Prop_CurrentUniverseId_Uint64, &err);
+    CHECK(err == vr::TrackedProp_Success);
+    CHECK(universe == 0x5652444Dull);
+}
+
 int main(int argc, char** argv) {
     doctest::Context context;
     context.applyCommandLine(argc, argv);

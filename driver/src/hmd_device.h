@@ -20,6 +20,9 @@ struct DisplayConfig {
     float display_frequency = 90.0f;
     float ipd_m = 0.064f;
     float seconds_from_vsync_to_photons = 0.011f;
+    // Tracking universe id. SteamVR keys chaperone (room setup) data by it;
+    // without one the HMD stays "uncalibrated" and nothing is persisted.
+    uint64_t universe_id = 0x5652444D;  // "VRDM"
 };
 
 class DisplayComponent : public vr::IVRDisplayComponent {

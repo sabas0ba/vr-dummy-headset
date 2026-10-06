@@ -57,9 +57,11 @@ SteamVR 非依存の結合試験は 2 箇所にある．
 | S5 | IPD 変更が眼の変換に反映 |
 | S6 | トラッカーの追跡喪失と復帰 |
 | S7 | 制御パイプ経由の連続コマンド（移動，回転，プリセット） |
+| S8 | シャペロンが較正済み，standing 原点 = raw 原点，プレイエリア 3 m × 3 m，ユニバース ID |
 
-加えてスクリプトが `vrdummy-cli scenario` によるシナリオファイル再生と，フィーダ切断時の
-追跡喪失を確認する．手順は `scripts/integration/README.md` を参照．
+加えてスクリプトが `vrdummy_probe chaperone` による初回確定，`vrdummy-cli scenario` による
+シナリオファイル再生，フィーダ切断時の追跡喪失，SteamVR 再起動後のシャペロン設定の保持を
+確認する．手順は `scripts/integration/README.md` を参照．
 
 ## CI（GitHub Actions，windows-latest）
 

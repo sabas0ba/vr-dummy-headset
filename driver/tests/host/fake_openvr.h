@@ -131,6 +131,7 @@ public:
     float GetFloat(uint32_t d, vr::ETrackedDeviceProperty p) { return GetScalar<float>(d, p, vr::k_unFloatPropertyTag, 0.0f); }
     int32_t GetInt32(uint32_t d, vr::ETrackedDeviceProperty p) { return GetScalar<int32_t>(d, p, vr::k_unInt32PropertyTag, 0); }
     bool GetBool(uint32_t d, vr::ETrackedDeviceProperty p) { return GetScalar<bool>(d, p, vr::k_unBoolPropertyTag, false); }
+    uint64_t GetUint64(uint32_t d, vr::ETrackedDeviceProperty p) { return GetScalar<uint64_t>(d, p, vr::k_unUint64PropertyTag, 0); }
 };
 
 class DriverInput : public vr::IVRDriverInput {
