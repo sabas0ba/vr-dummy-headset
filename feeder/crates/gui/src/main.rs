@@ -122,7 +122,10 @@ impl App {
 
     fn refresh_widgets(&mut self, w: &World) {
         self.device_ids = w.device_ids().collect();
-        if !self.selected.is_some_and(|id| self.device_ids.contains(&id)) {
+        if !self
+            .selected
+            .is_some_and(|id| self.device_ids.contains(&id))
+        {
             self.selected = self.device_ids.first().copied();
         }
         if let Some(p) = self.selected.and_then(|id| w.pose(id)) {
@@ -201,7 +204,10 @@ impl App {
             } else {
                 RichText::new(format!("{label}  (lost)")).color(Color32::from_gray(130))
             };
-            if ui.selectable_label(self.selected == Some(id), text).clicked() {
+            if ui
+                .selectable_label(self.selected == Some(id), text)
+                .clicked()
+            {
                 self.selected = Some(id);
                 self.refresh_from_world();
             }
