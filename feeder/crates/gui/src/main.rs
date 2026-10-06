@@ -20,7 +20,7 @@ use view3d::{Selection, View3d, device_label};
 use vrdummy_core::command::{controller_component_is_scalar, controller_component_names};
 use vrdummy_core::control::{ControlServer, SharedEngine};
 use vrdummy_core::engine::Reply;
-use vrdummy_core::world::quat_to_euler_deg;
+use vrdummy_core::world::{World, quat_to_euler_deg};
 use vrdummy_core::{Config, Engine, logging, presets};
 use vrdummy_protocol::{controller_components, device_ids};
 
@@ -46,7 +46,7 @@ struct App {
     engine: SharedEngine,
     _control: Option<ControlServer>,
     quit: Arc<AtomicBool>,
-    selected: u16,
+    selected: Option<u16>,
     device_ids: Vec<u16>,
     editor: DeviceEditor,
     view: View3d,
@@ -70,7 +70,7 @@ impl App {
             engine,
             _control: control,
             quit,
-            selected: device_ids::HMD,
+            selected: Some(device_ids::HMD),
             device_ids: Vec::new(),
             editor: DeviceEditor {
                 buttons,
@@ -116,16 +116,25 @@ impl App {
 
     /// Copies the engine's world into the editor and display widgets.
     fn refresh_from_world(&mut self) {
-        let e = self.engine.lock().expect("engine lock");
-        let w = e.world();
+        let world = self.engine.lock().expect("engine lock").world().clone();
+        self.refresh_widgets(&world);
+    }
+
+    fn refresh_widgets(&mut self, w: &World) {
         self.device_ids = w.device_ids().collect();
-        if let Some(p) = w.pose(self.selected) {
+        if !self.selected.is_some_and(|id| self.device_ids.contains(&id)) {
+            self.selected = self.device_ids.first().copied();
+        }
+        if let Some(p) = self.selected.and_then(|id| w.pose(id)) {
             self.editor.position = p.position;
             self.editor.euler = quat_to_euler_deg(p.rotation);
             self.editor.valid = p.flags.pose_valid();
+        } else {
+            self.editor.position = [0.0; 3];
+            self.editor.euler = [0.0; 3];
+            self.editor.valid = false;
         }
-        if is_controller(self.selected) {
-            let id = self.selected;
+        if let Some(id) = self.selected.filter(|id| is_controller(*id)) {
             let input = |component: u16| w.inputs.get(&(id, component)).copied().unwrap_or(0.0);
             for (_, component, state) in &mut self.editor.buttons {
                 *state = input(*component) != 0.0;
@@ -192,14 +201,19 @@ impl App {
             } else {
                 RichText::new(format!("{label}  (lost)")).color(Color32::from_gray(130))
             };
-            if ui.selectable_label(self.selected == id, text).clicked() {
-                self.selected = id;
+            if ui.selectable_label(self.selected == Some(id), text).clicked() {
+                self.selected = Some(id);
+                self.refresh_from_world();
             }
         }
     }
 
     fn show_editor(&mut self, ui: &mut egui::Ui) {
-        let dev = device_label(self.selected);
+        let Some(selected) = self.selected else {
+            ui.label("No devices available");
+            return;
+        };
+        let dev = device_label(selected);
         ui.heading(format!("Edit: {dev}"));
         let mut cmds = Vec::new();
 
@@ -245,7 +259,7 @@ impl App {
             }
         });
 
-        if is_controller(self.selected) {
+        if is_controller(selected) {
             ui.add_space(6.0);
             ui.label(RichText::new("Buttons").strong());
             egui::Grid::new("buttons")
@@ -427,8 +441,9 @@ impl App {
 
     fn show_view(&mut self, ui: &mut egui::Ui) {
         let world = self.engine.lock().expect("engine lock").world().clone();
-        if let Some(id) = self.view.show(ui, &world, Selection(Some(self.selected))) {
-            self.selected = id;
+        if let Some(id) = self.view.show(ui, &world, Selection(self.selected)) {
+            self.selected = Some(id);
+            self.refresh_from_world();
         }
     }
 }
@@ -548,4 +563,48 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |_cc| Ok(Box::new(App::new(engine, control, quit)))),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vrdummy_protocol::{DeviceClass, DeviceInfo};
+
+    #[test]
+    fn editor_follows_device_removal_and_empty_world() {
+        let engine = Arc::new(Mutex::new(Engine::new(Config::default())));
+        let mut app = App::new(engine, None, Arc::new(AtomicBool::new(false)));
+        let mut world = World::default();
+        let devices: Vec<_> = [3, 4]
+            .into_iter()
+            .map(|id| DeviceInfo {
+                device_id: id,
+                device_class: DeviceClass::Tracker,
+                serial: format!("TRACKER-{id}"),
+            })
+            .collect();
+        world.reconcile_devices(&devices);
+        world.set_position(3, [1.0, 2.0, 3.0]);
+        app.refresh_widgets(&world);
+        assert_eq!(app.selected, Some(3));
+        assert!(app.editor.valid);
+        assert!((app.editor.position[1] - 2.0).abs() < 1e-9);
+
+        app.selected = Some(4);
+        app.refresh_widgets(&world);
+        assert_eq!(app.selected, Some(4));
+        world.reconcile_devices(&devices[..1]);
+        app.refresh_widgets(&world);
+        assert_eq!(app.selected, Some(3));
+
+        world.reconcile_devices(&[]);
+        app.refresh_widgets(&world);
+        assert_eq!(app.selected, None);
+        assert!(app.device_ids.is_empty());
+        assert!(!app.editor.valid);
+        world.reconcile_devices(&devices);
+        app.refresh_widgets(&world);
+        assert_eq!(app.selected, Some(3));
+        assert!(app.editor.valid);
+    }
 }

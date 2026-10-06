@@ -398,10 +398,10 @@ mod tests {
         for step in recorded {
             replay.execute(&step.command).expect("replay");
         }
-        assert_eq!(
-            replay.world().pose(0).expect("hmd").position,
-            [1.0, 1.8, 0.0]
-        );
+        let position = replay.world().pose(0).expect("hmd").position;
+        for (actual, expected) in position.into_iter().zip([1.0, 1.8, 0.0]) {
+            assert!((actual - expected).abs() < 1e-9);
+        }
         std::fs::remove_dir_all(dir).expect("cleanup");
     }
 
