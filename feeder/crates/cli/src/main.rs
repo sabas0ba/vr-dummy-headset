@@ -28,9 +28,15 @@ subcommands:
            connect to the driver, serve the control pipe and read commands from stdin
   scenario <file> [--record <file>]
            execute a timed scenario file, then exit
-  set      <command...>
+  set      [--json] [--timeout-ms <ms>] <command...>
            send one command to a running instance and print the reply
-  status   same as `set status`
+  status   [--json] [--timeout-ms <ms>]
+           query the running GUI or CLI; --json returns every device
+
+control options may also precede the subcommand; timeout defaults to 2000 ms
+JSON output: one object on stdout, diagnostics on stderr
+exit codes: 0 success, 1 command error, 2 arguments/configuration,
+            3 transport error, 4 deadline exceeded, 5 incompatible reply
 
 commands are documented in docs/control.md";
 
@@ -38,6 +44,8 @@ struct GlobalOptions {
     config: Option<PathBuf>,
     log_file: Option<PathBuf>,
     level: Option<String>,
+    json: bool,
+    timeout: Duration,
 }
 
 enum Subcommand {
@@ -69,6 +77,8 @@ fn parse_args(argv: Vec<String>) -> Result<(GlobalOptions, Subcommand), String> 
         config: None,
         log_file: None,
         level: None,
+        json: false,
+        timeout: Duration::from_secs(2),
     };
     let sub = loop {
         let Some(arg) = args.next() else {
@@ -78,6 +88,10 @@ fn parse_args(argv: Vec<String>) -> Result<(GlobalOptions, Subcommand), String> 
             "--config" => global.config = Some(PathBuf::from(take_value(&mut args, "--config")?)),
             "--log" => global.log_file = Some(PathBuf::from(take_value(&mut args, "--log")?)),
             "--level" => global.level = Some(take_value(&mut args, "--level")?),
+            "--json" => global.json = true,
+            "--timeout-ms" => {
+                global.timeout = parse_timeout(&take_value(&mut args, "--timeout-ms")?)?
+            }
             "-h" | "--help" => return Err(String::new()),
             s if s.starts_with('-') => return Err(format!("unknown option: {s}")),
             _ => break arg,
@@ -114,6 +128,7 @@ fn parse_args(argv: Vec<String>) -> Result<(GlobalOptions, Subcommand), String> 
             Subcommand::Scenario { file, record }
         }
         "set" => {
+            parse_control_options(&mut args, &mut global)?;
             let rest: Vec<String> = args.collect();
             if rest.is_empty() {
                 return Err("set: missing command".to_owned());
@@ -122,12 +137,125 @@ fn parse_args(argv: Vec<String>) -> Result<(GlobalOptions, Subcommand), String> 
                 line: rest.join(" "),
             }
         }
-        "status" => Subcommand::Set {
-            line: "status".to_owned(),
-        },
+        "status" => {
+            parse_control_options(&mut args, &mut global)?;
+            if let Some(arg) = args.next() {
+                return Err(format!("status: unknown option {arg}"));
+            }
+            Subcommand::Set {
+                line: "status".to_owned(),
+            }
+        }
         other => return Err(format!("unknown subcommand: {other}")),
     };
+    if global.json && !matches!(sub, Subcommand::Set { .. }) {
+        return Err("--json is supported by status and set".to_owned());
+    }
     Ok((global, sub))
+}
+
+fn parse_timeout(value: &str) -> Result<Duration, String> {
+    let milliseconds: u64 = value
+        .parse()
+        .map_err(|_| "--timeout-ms requires an integer from 1 to 3600000".to_owned())?;
+    if !(1..=3_600_000).contains(&milliseconds) {
+        return Err("--timeout-ms must be from 1 to 3600000".to_owned());
+    }
+    Ok(Duration::from_millis(milliseconds))
+}
+
+fn parse_control_options(
+    args: &mut std::iter::Peekable<std::vec::IntoIter<String>>,
+    global: &mut GlobalOptions,
+) -> Result<(), String> {
+    while let Some(option) = args.peek().map(String::as_str) {
+        match option {
+            "--json" => {
+                args.next();
+                global.json = true;
+            }
+            "--timeout-ms" => {
+                args.next();
+                global.timeout = parse_timeout(&take_value(args, "--timeout-ms")?)?;
+            }
+            _ => break,
+        }
+    }
+    Ok(())
+}
+
+fn report_error(json: bool, kind: &str, message: &str, exit: u8) -> ExitCode {
+    if json {
+        println!(
+            "{{\"schema_version\":1,\"ok\":false,\"error\":{{\"kind\":\"{kind}\",\"message\":\"{}\"}}}}",
+            logging::escape_json(message)
+        );
+    } else {
+        eprintln!("error: {message}");
+    }
+    ExitCode::from(exit)
+}
+
+fn run_control(config: &Config, line: &str, global: &GlobalOptions) -> ExitCode {
+    let snapshot = global.json
+        && matches!(
+            vrdummy_core::Command::parse(line),
+            Ok(vrdummy_core::Command::Status | vrdummy_core::Command::StatusJson)
+        );
+    let command = if snapshot { "status --json" } else { line };
+    let reply =
+        match control::send_line_with_timeout(&config.control.pipe_name, command, global.timeout) {
+            Ok(reply) => reply,
+            Err(error) => {
+                let (kind, exit) = if error.kind() == std::io::ErrorKind::TimedOut {
+                    ("timeout", 4)
+                } else {
+                    ("transport_error", 3)
+                };
+                return report_error(global.json, kind, &error.to_string(), exit);
+            }
+        };
+    if let Some(error) = reply.strip_prefix("err ") {
+        if global.json {
+            return report_error(true, "command_error", error, 1);
+        }
+        println!("{reply}");
+        return ExitCode::FAILURE;
+    }
+    let value = if reply == "ok" {
+        "null".to_owned()
+    } else if reply == "quit" {
+        "{\"quit\":true}".to_owned()
+    } else if let Some(text) = reply.strip_prefix("ok ") {
+        if snapshot {
+            // A legacy server ignores the status option and returns text.
+            // Refuse that response instead of emitting malformed JSON.
+            if !text.starts_with("{\"schema_version\":1,") || !text.ends_with('}') {
+                return report_error(
+                    global.json,
+                    "protocol_error",
+                    "server does not support JSON status; restart the GUI or feeder with the matching version",
+                    5,
+                );
+            }
+            text.to_owned()
+        } else {
+            format!("\"{}\"", logging::escape_json(text))
+        }
+    } else {
+        return report_error(
+            global.json,
+            "protocol_error",
+            "unrecognised control reply",
+            5,
+        );
+    };
+    if global.json {
+        println!("{{\"schema_version\":1,\"ok\":true,\"result\":{value}}}");
+    } else {
+        println!("{reply}");
+    }
+    ExitCode::SUCCESS
 }
 
 fn load_config(global: &GlobalOptions) -> Result<Config, String> {
@@ -284,9 +412,17 @@ fn run_scenario(config: Config, file: &Path, record: Option<&Path>) -> Result<()
 
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
+    if argv == ["--help"] || argv == ["-h"] {
+        println!("{USAGE}");
+        return ExitCode::SUCCESS;
+    }
+    let json_requested = argv.iter().any(|arg| arg == "--json");
     let (global, sub) = match parse_args(argv) {
         Ok(v) => v,
         Err(msg) => {
+            if json_requested {
+                return report_error(true, "argument_error", &msg, 2);
+            }
             if !msg.is_empty() {
                 eprintln!("error: {msg}\n");
             }
@@ -297,13 +433,15 @@ fn main() -> ExitCode {
     let config = match load_config(&global) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("error: {e}");
-            return ExitCode::from(2);
+            return report_error(global.json, "argument_error", &e, 2);
         }
     };
     if let Err(e) = init_logging(&global, &config) {
-        eprintln!("error: {e}");
-        return ExitCode::from(2);
+        return report_error(global.json, "argument_error", &e, 2);
+    }
+
+    if let Subcommand::Set { line } = &sub {
+        return run_control(&config, line, &global);
     }
 
     let result = match sub {
@@ -313,19 +451,7 @@ fn main() -> ExitCode {
             stdin,
         } => run(config, record.as_deref(), control, stdin),
         Subcommand::Scenario { file, record } => run_scenario(config, &file, record.as_deref()),
-        Subcommand::Set { line } => match control::send_line(&config.control.pipe_name, &line) {
-            Ok(reply) => {
-                println!("{reply}");
-                if reply.starts_with("err") {
-                    Err(String::new())
-                } else {
-                    Ok(())
-                }
-            }
-            Err(e) => Err(format!(
-                "control pipe: {e} (is `vrdummy-cli run` or the GUI running?)"
-            )),
-        },
+        Subcommand::Set { .. } => unreachable!("control commands return above"),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -377,7 +503,7 @@ mod tests {
     #[test]
     fn scenario_playback_records_replayable_commands() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../../.tmp")
+            .join("../../../.tmp")
             .join(format!("scenario-record-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("test directory");
         let input = dir.join("input.txt");
@@ -410,5 +536,28 @@ mod tests {
         assert!(parse_args(argv("fly")).is_err());
         assert!(parse_args(argv("--config")).is_err());
         assert!(parse_args(argv("set")).is_err());
+    }
+
+    #[test]
+    fn parses_agent_control_options_and_rejects_ambiguous_input() {
+        for line in [
+            "--json --timeout-ms 150 status",
+            "status --json --timeout-ms 150",
+            "set --json --timeout-ms 150 status",
+        ] {
+            let (global, command) = parse_args(argv(line)).expect("agent options");
+            assert!(global.json);
+            assert_eq!(global.timeout, Duration::from_millis(150));
+            assert!(matches!(command, Subcommand::Set { line } if line == "status"));
+        }
+        for line in [
+            "status surprise",
+            "status --timeout-ms 0",
+            "status --timeout-ms NaN",
+            "status --timeout-ms 3600001",
+            "--json run",
+        ] {
+            assert!(parse_args(argv(line)).is_err(), "{line}");
+        }
     }
 }

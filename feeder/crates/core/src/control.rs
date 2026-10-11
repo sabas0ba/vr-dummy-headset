@@ -4,6 +4,7 @@
 //! The server runs on its own thread and locks the shared engine for each
 //! command. Clients connect sequentially; `vrdummy-cli set` is one client.
 
+#[cfg(all(test, windows))]
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -32,9 +33,18 @@ impl ControlServer {
         let running = Arc::new(AtomicBool::new(true));
         let name = pipe_name.to_owned();
         let flag = Arc::clone(&running);
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(0);
         let thread = std::thread::Builder::new()
             .name("vrdummy-control".to_owned())
-            .spawn(move || serve(&name, &engine, &flag, &quit_flag))?;
+            .spawn(move || {
+                let _ = ready_tx.send(());
+                serve(&name, &engine, &flag, &quit_flag);
+            })?;
+        // Only cancel I/O after Rust has finished initializing the worker.
+        // An immediate stop must not interrupt runtime thread startup I/O.
+        ready_rx
+            .recv()
+            .map_err(|_| io::Error::other("control thread failed to start"))?;
         log::info!("control pipe listening on {}", win32::pipe_path(pipe_name));
         Ok(Self {
             running,
@@ -129,6 +139,7 @@ fn serve(pipe_name: &str, engine: &SharedEngine, running: &AtomicBool, quit_flag
 
 /// Opens the control pipe as a client, waiting while the server is between
 /// connections (busy) or not yet listening (not found), up to `timeout`.
+#[cfg(all(test, windows))]
 fn open_client(pipe_name: &str, timeout: std::time::Duration) -> io::Result<File> {
     let path = win32::pipe_path(pipe_name);
     let deadline = std::time::Instant::now() + timeout;
@@ -156,15 +167,19 @@ fn open_client(pipe_name: &str, timeout: std::time::Duration) -> io::Result<File
 }
 
 /// Sends one line to a running control pipe and returns the reply line.
-/// Waits up to two seconds for the server to accept the connection.
+/// The two-second deadline covers connection, writing and reading the reply.
 pub fn send_line(pipe_name: &str, line: &str) -> io::Result<String> {
-    let file = open_client(pipe_name, std::time::Duration::from_secs(2))?;
-    let mut writer = file.try_clone()?;
-    writeln!(writer, "{}", line.trim())?;
-    writer.flush()?;
-    let mut reply = String::new();
-    BufReader::new(file).read_line(&mut reply)?;
-    Ok(reply.trim_end().to_owned())
+    send_line_with_timeout(pipe_name, line, std::time::Duration::from_secs(2))
+}
+
+/// Sends one command with an overall deadline. A timeout does not prove that
+/// the server did not execute the command; callers must not retry blindly.
+pub fn send_line_with_timeout(
+    pipe_name: &str,
+    line: &str,
+    timeout: std::time::Duration,
+) -> io::Result<String> {
+    crate::control_client::send(pipe_name, line, timeout)
 }
 
 #[cfg(test)]
@@ -248,8 +263,10 @@ mod tests {
                 server.stop();
                 let _ = tx.send(());
             });
-            rx.recv_timeout(Duration::from_secs(2))
-                .expect("bounded stop");
+            assert!(
+                rx.recv_timeout(Duration::from_secs(2)).is_ok(),
+                "bounded stop, iteration {index}"
+            );
             stopper.join().expect("stop thread");
         }
     }

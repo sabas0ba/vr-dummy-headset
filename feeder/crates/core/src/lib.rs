@@ -7,12 +7,14 @@
 pub mod command;
 pub mod config;
 pub mod control;
+mod control_client;
 pub mod driver_client;
 pub mod engine;
 pub mod logging;
 pub mod osc;
 pub mod presets;
 pub mod scenario;
+mod status;
 pub mod win32;
 pub mod world;
 

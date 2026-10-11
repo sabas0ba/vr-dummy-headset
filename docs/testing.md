@@ -23,6 +23,12 @@
 
 実行: `cargo test --workspace`（`feeder/` 内）
 
+Agent 向け JSON・終了コード・GUI/CLI 共通制御の結合試験:
+`scripts/integration/agent_cli.ps1`．既定では debug CLI を常駐起動し，独立した CLI プロセスから
+JSON を取得・解析して全デバイス状態，変更，エラー，終了，期限を検証する．SteamVR は不要．
+`-Cli <exe>` で試験対象を指定でき，`-Gui <exe>` を追加すると同じ試験を GUI に対して行う
+（対話デスクトップが必要）．CI は release CLI 版を実行する．
+
 ゴールデンデータの更新: `VRDUMMY_UPDATE_FIXTURES=1 cargo test -p vrdummy-protocol`
 
 初版のゴールデンデータは仕様書から独立に書いた使い捨ての Python スクリプトで生成し，

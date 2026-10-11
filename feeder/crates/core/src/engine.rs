@@ -205,7 +205,10 @@ impl Engine {
         let command = Command::parse(line)?;
         let reply = self.execute(&command)?;
         if let Some(rec) = self.recorder.as_mut()
-            && !matches!(command, Command::Status | Command::Quit)
+            && !matches!(
+                command,
+                Command::Status | Command::StatusJson | Command::Quit
+            )
         {
             let t = rec.start.elapsed().as_secs_f64();
             let _ = writeln!(rec.file, "{t:.3} {}", line.trim());
@@ -280,6 +283,7 @@ impl Engine {
             }
             Command::Sync => self.sync_all()?,
             Command::Status => return Ok(Reply::Ok(self.status_line())),
+            Command::StatusJson => return Ok(Reply::Ok(self.status_json())),
             Command::Quit => return Ok(Reply::Quit),
         }
         Ok(Reply::Ok(String::new()))

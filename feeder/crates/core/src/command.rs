@@ -93,6 +93,8 @@ pub enum Command {
     Sync,
     /// `status`
     Status,
+    /// `status --json`: complete machine-readable feeder state.
+    StatusJson,
     /// `quit`
     Quit,
 }
@@ -317,7 +319,11 @@ impl Command {
                 Ok(Self::Osc(args[0].to_owned(), osc_args))
             }
             "sync" => Ok(Self::Sync),
-            "status" => Ok(Self::Status),
+            "status" if args == ["--json"] => Ok(Self::StatusJson),
+            "status" => {
+                arity("status", &args, 0)?;
+                Ok(Self::Status)
+            }
             "quit" | "exit" => Ok(Self::Quit),
             other => Err(CommandError::UnknownVerb(other.to_owned())),
         }
