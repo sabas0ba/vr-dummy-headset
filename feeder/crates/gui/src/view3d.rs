@@ -243,61 +243,6 @@ fn normalize(v: [f32; 3]) -> [f32; 3] {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn constrained_drag_and_snap_preserve_orthogonal_coordinates() {
-        let view = View3d::default();
-        let cam = Camera::new(
-            &view,
-            Rect::from_min_size(Pos2::ZERO, Vec2::new(600.0, 600.0)),
-        );
-        let position = [0.173, 1.237, -0.313];
-        let origin = cam.project(position).unwrap();
-        for (constraint, fixed) in [
-            (Constraint::X, vec![1, 2]),
-            (Constraint::Y, vec![0, 2]),
-            (Constraint::Z, vec![0, 1]),
-            (Constraint::XY, vec![2]),
-            (Constraint::XZ, vec![1]),
-            (Constraint::YZ, vec![0]),
-        ] {
-            let drag = Drag {
-                id: 1,
-                origin,
-                position,
-                rotation: [1.0, 0.0, 0.0, 0.0],
-                constraint,
-            };
-            let moved = cam
-                .drag_position(&drag, origin + Vec2::new(35.0, -23.0))
-                .unwrap();
-            let snapped = snap_translation(moved, position, constraint);
-            for i in fixed {
-                assert!((moved[i] - position[i]).abs() < 1e-6);
-                assert!((snapped[i] - position[i]).abs() < 1e-6);
-            }
-        }
-        let drag = Drag {
-            id: 1,
-            origin,
-            position,
-            rotation: [1.0, 0.0, 0.0, 0.0],
-            constraint: Constraint::Screen,
-        };
-        let moved = cam
-            .drag_position(&drag, origin + Vec2::new(35.0, -23.0))
-            .unwrap();
-        let snapped = snap_translation(moved, position, Constraint::Screen);
-        let depth: f64 = (0..3)
-            .map(|i| (snapped[i] - position[i]) * f64::from(cam.rot[2][i]))
-            .sum();
-        assert!(depth.abs() < 1e-6);
-    }
-}
-
 /// Edges of a box whose corners are indexed by bits (x, y, z).
 const BOX_EDGES: [(usize, usize); 12] = [
     (0, 1),
@@ -594,5 +539,60 @@ impl View3d {
             Color32::from_gray(140),
         );
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constrained_drag_and_snap_preserve_orthogonal_coordinates() {
+        let view = View3d::default();
+        let cam = Camera::new(
+            &view,
+            Rect::from_min_size(Pos2::ZERO, Vec2::new(600.0, 600.0)),
+        );
+        let position = [0.173, 1.237, -0.313];
+        let origin = cam.project(position).unwrap();
+        for (constraint, fixed) in [
+            (Constraint::X, vec![1, 2]),
+            (Constraint::Y, vec![0, 2]),
+            (Constraint::Z, vec![0, 1]),
+            (Constraint::XY, vec![2]),
+            (Constraint::XZ, vec![1]),
+            (Constraint::YZ, vec![0]),
+        ] {
+            let drag = Drag {
+                id: 1,
+                origin,
+                position,
+                rotation: [1.0, 0.0, 0.0, 0.0],
+                constraint,
+            };
+            let moved = cam
+                .drag_position(&drag, origin + Vec2::new(35.0, -23.0))
+                .unwrap();
+            let snapped = snap_translation(moved, position, constraint);
+            for i in fixed {
+                assert!((moved[i] - position[i]).abs() < 1e-6);
+                assert!((snapped[i] - position[i]).abs() < 1e-6);
+            }
+        }
+        let drag = Drag {
+            id: 1,
+            origin,
+            position,
+            rotation: [1.0, 0.0, 0.0, 0.0],
+            constraint: Constraint::Screen,
+        };
+        let moved = cam
+            .drag_position(&drag, origin + Vec2::new(35.0, -23.0))
+            .unwrap();
+        let snapped = snap_translation(moved, position, Constraint::Screen);
+        let depth: f64 = (0..3)
+            .map(|i| (snapped[i] - position[i]) * f64::from(cam.rot[2][i]))
+            .sum();
+        assert!(depth.abs() < 1e-6);
     }
 }
