@@ -1,0 +1,13 @@
+# Walk forward one metre over two seconds, look left, press jump, return the
+# head to centre. Final HMD position: (1.0, 1.6, -1.0).
+0.0  preset stand 1.72
+0.2  pos hmd 0 1.6 0
+0.4  pos hmd 0 1.6 -0.25
+0.6  pos hmd 0 1.6 -0.5
+0.8  pos hmd 0 1.6 -0.75
+1.0  pos hmd 0 1.6 -1.0
+1.2  euler hmd 45 0 0
+1.4  input ctrl-r a/click 1
+1.5  input ctrl-r a/click 0
+1.8  euler hmd 0 0 0
+2.0  pos hmd 1.0 1.6 -1.0

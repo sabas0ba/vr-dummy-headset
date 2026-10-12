@@ -1,0 +1,25 @@
+{
+  "name": "vrdummy controller bindings for vrdummy_e2e",
+  "description": "Maps every vrdummy_controller input to the e2e action set.",
+  "controller_type": "vrdummy_controller",
+  "bindings": {
+    "/actions/main": {
+      "sources": [
+        { "path": "/user/hand/left/input/a", "mode": "button", "inputs": { "click": { "output": "/actions/main/in/a" } } },
+        { "path": "/user/hand/right/input/a", "mode": "button", "inputs": { "click": { "output": "/actions/main/in/a" } } },
+        { "path": "/user/hand/left/input/b", "mode": "button", "inputs": { "click": { "output": "/actions/main/in/b" } } },
+        { "path": "/user/hand/right/input/b", "mode": "button", "inputs": { "click": { "output": "/actions/main/in/b" } } },
+        { "path": "/user/hand/left/input/trigger", "mode": "trigger", "inputs": { "pull": { "output": "/actions/main/in/trigger" } } },
+        { "path": "/user/hand/right/input/trigger", "mode": "trigger", "inputs": { "pull": { "output": "/actions/main/in/trigger" } } },
+        { "path": "/user/hand/left/input/grip", "mode": "trigger", "inputs": { "pull": { "output": "/actions/main/in/grip" } } },
+        { "path": "/user/hand/right/input/grip", "mode": "trigger", "inputs": { "pull": { "output": "/actions/main/in/grip" } } },
+        { "path": "/user/hand/left/input/joystick", "mode": "joystick", "inputs": { "position": { "output": "/actions/main/in/joystick" }, "click": { "output": "/actions/main/in/joystick_click" } } },
+        { "path": "/user/hand/right/input/joystick", "mode": "joystick", "inputs": { "position": { "output": "/actions/main/in/joystick" }, "click": { "output": "/actions/main/in/joystick_click" } } }
+      ],
+      "poses": [
+        { "output": "/actions/main/in/hand", "path": "/user/hand/left/pose/raw" },
+        { "output": "/actions/main/in/hand", "path": "/user/hand/right/pose/raw" }
+      ]
+    }
+  }
+}

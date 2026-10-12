@@ -1,0 +1,33 @@
+{
+  "default_bindings": [
+    {
+      "controller_type": "vrdummy_controller",
+      "binding_url": "bindings_vrdummy_controller.json"
+    }
+  ],
+  "actions": [
+    { "name": "/actions/main/in/a", "type": "boolean" },
+    { "name": "/actions/main/in/b", "type": "boolean" },
+    { "name": "/actions/main/in/trigger", "type": "vector1" },
+    { "name": "/actions/main/in/grip", "type": "vector1" },
+    { "name": "/actions/main/in/joystick", "type": "vector2" },
+    { "name": "/actions/main/in/joystick_click", "type": "boolean" },
+    { "name": "/actions/main/in/hand", "type": "pose" }
+  ],
+  "action_sets": [
+    { "name": "/actions/main", "usage": "leftright" }
+  ],
+  "localization": [
+    {
+      "language_tag": "en_US",
+      "/actions/main": "vrdummy e2e",
+      "/actions/main/in/a": "A",
+      "/actions/main/in/b": "B",
+      "/actions/main/in/trigger": "Trigger",
+      "/actions/main/in/grip": "Grip",
+      "/actions/main/in/joystick": "Joystick",
+      "/actions/main/in/joystick_click": "Joystick click",
+      "/actions/main/in/hand": "Hand pose"
+    }
+  ]
+}

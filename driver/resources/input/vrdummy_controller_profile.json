@@ -1,0 +1,58 @@
+{
+  "jsonid": "input_profile",
+  "controller_type": "vrdummy_controller",
+  "input_bindingui_mode": "controller_handed",
+  "input_source": {
+    "/input/system": {
+      "type": "button",
+      "binding_image_point": [40, 40],
+      "order": 1
+    },
+    "/input/a": {
+      "type": "button",
+      "touch": true,
+      "binding_image_point": [80, 60],
+      "order": 2
+    },
+    "/input/b": {
+      "type": "button",
+      "touch": true,
+      "binding_image_point": [120, 60],
+      "order": 3
+    },
+    "/input/trigger": {
+      "type": "trigger",
+      "click": true,
+      "touch": true,
+      "value": true,
+      "binding_image_point": [250, 60],
+      "order": 4
+    },
+    "/input/grip": {
+      "type": "trigger",
+      "click": true,
+      "touch": true,
+      "value": true,
+      "binding_image_point": [250, 120],
+      "order": 5
+    },
+    "/input/joystick": {
+      "type": "joystick",
+      "click": true,
+      "touch": true,
+      "binding_image_point": [160, 120],
+      "order": 6
+    },
+    "/output/haptic": {
+      "type": "vibration",
+      "binding_image_point": [300, 150],
+      "order": 7
+    }
+  },
+  "default_bindings": [
+    {
+      "app_key": "steam.app.438100",
+      "binding_url": "vrdummy_controller_vrchat_bindings.json"
+    }
+  ]
+}
