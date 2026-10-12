@@ -84,6 +84,28 @@ cargo test --workspace
 
 手順の詳細は [scripts/integration/README.md](scripts/integration/README.md) を参照．
 
+## GUI と CLI の使い方
+
+リポジトリのルートから GUI を起動する．以下は release ビルドの実行例．
+
+```powershell
+.\feeder\target\release\vrdummy-gui.exe --config feeder/vrdummy.example.toml
+```
+
+GUI を起動したまま，別の端末や AI Agent から同じ設定を指定して操作・状態取得できる．
+同じ制御パイプで `vrdummy-cli run` を追加起動する必要はない．
+
+```powershell
+# HMD の位置を設定する（単位: m）
+.\feeder\target\release\vrdummy-cli.exe --config feeder/vrdummy.example.toml set --json pos hmd 0 1.7 0
+
+# 状態を JSON で取得する（接続・送受信の期限: 3000 ms）
+.\feeder\target\release\vrdummy-cli.exe --config feeder/vrdummy.example.toml status --json --timeout-ms 3000
+```
+
+`--json` は状態・操作結果を標準出力に返す．状態はフィーダが保持する指令値であり，
+SteamVR の実測値ではない．コマンド一覧と終了コードは [docs/control.md](docs/control.md) を参照．
+
 ## ライセンス
 
 Apache-2.0．third_party 配下は各ライセンス（OpenVR SDK: BSD-3-Clause，doctest: MIT）に従う．
