@@ -69,3 +69,7 @@ try {
     if ($null -ne $server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
     Pop-Location
 }
+
+# The final negative test leaves a native failure code in PowerShell. GitHub
+# Actions propagates it even when every assertion above succeeded.
+$global:LASTEXITCODE = 0
