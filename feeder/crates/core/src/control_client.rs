@@ -131,16 +131,16 @@ mod windows {
                     handle,
                     buffer.as_ptr().cast(),
                     buffer.len() as u32,
-                    &mut transferred,
-                    &mut ov,
+                    &raw mut transferred,
+                    &raw mut ov,
                 )
             } else {
                 ReadFile(
                     handle,
                     buffer.as_mut_ptr().cast(),
                     buffer.len() as u32,
-                    &mut transferred,
-                    &mut ov,
+                    &raw mut transferred,
+                    &raw mut ov,
                 )
             }
         };
@@ -166,13 +166,13 @@ mod windows {
             // CancelIoEx requests cancellation; completion must be drained before
             // either the buffer or OVERLAPPED can leave scope (Win32 contract).
             unsafe {
-                CancelIoEx(handle, &mut ov);
-                GetOverlappedResult(handle, &mut ov, &mut transferred, 1);
+                CancelIoEx(handle, &raw mut ov);
+                GetOverlappedResult(handle, &raw mut ov, &raw mut transferred, 1);
             }
             return Err(error);
         }
         // SAFETY: the event signalled completion of this exact operation.
-        if unsafe { GetOverlappedResult(handle, &mut ov, &mut transferred, 0) } == 0 {
+        if unsafe { GetOverlappedResult(handle, &raw mut ov, &raw mut transferred, 0) } == 0 {
             return Err(io::Error::last_os_error());
         }
         Ok(transferred as usize)

@@ -90,7 +90,7 @@ fn parse_args(argv: Vec<String>) -> Result<(GlobalOptions, Subcommand), String> 
             "--level" => global.level = Some(take_value(&mut args, "--level")?),
             "--json" => global.json = true,
             "--timeout-ms" => {
-                global.timeout = parse_timeout(&take_value(&mut args, "--timeout-ms")?)?
+                global.timeout = parse_timeout(&take_value(&mut args, "--timeout-ms")?)?;
             }
             "-h" | "--help" => return Err(String::new()),
             s if s.starts_with('-') => return Err(format!("unknown option: {s}")),
