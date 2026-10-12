@@ -88,6 +88,7 @@ try {
         $guiProcess = Start-Process -FilePath $Gui -ArgumentList @('--config', ('"{0}"' -f $config)) `
             -WorkingDirectory $repo -WindowStyle Hidden -PassThru `
             -RedirectStandardOutput (Join-Path $testDir 'gui.out') -RedirectStandardError (Join-Path $testDir 'gui.err')
+        Invoke-GuiButton 'Driver registration'
         Invoke-GuiButton 'Unregister'
         Wait-Registration $false
         Invoke-GuiButton 'Register'

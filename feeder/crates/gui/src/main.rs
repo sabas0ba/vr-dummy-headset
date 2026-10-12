@@ -8,7 +8,11 @@
 //! frame, so changes made elsewhere are shown.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod analog;
+mod desktop;
+mod headset_window;
 mod installation;
+mod rig_editor;
 mod view3d;
 
 use std::path::PathBuf;
@@ -44,6 +48,10 @@ struct DeviceEditor {
 }
 
 struct App {
+    desktop: desktop::Desktop,
+    headset_window: headset_window::Panel,
+    stick_spring: bool,
+    stick_device: Option<u16>,
     installation: installation::InstallationPanel,
     engine: SharedEngine,
     _control: Option<ControlServer>,
@@ -69,6 +77,10 @@ impl App {
             .map(|(name, id)| (name, id, false))
             .collect();
         let mut app = Self {
+            desktop: desktop::Desktop::default(),
+            headset_window: headset_window::Panel::default(),
+            stick_spring: true,
+            stick_device: None,
             installation: installation::InstallationPanel::default(),
             engine,
             _control: control,
@@ -298,7 +310,15 @@ impl App {
             {
                 cmds.push(format!("input {dev} grip/value {}", self.editor.grip));
             }
-            let mut js = false;
+            ui.checkbox(&mut self.stick_spring, "Spring return on release");
+            let mut dragging = self.stick_device.is_some();
+            let mut js = analog::stick(
+                ui,
+                &mut self.editor.joystick,
+                self.stick_spring,
+                &mut dragging,
+            );
+            self.stick_device = dragging.then_some(selected);
             js |= ui
                 .add(egui::Slider::new(&mut self.editor.joystick[0], -1.0..=1.0).text("joystick x"))
                 .changed();
@@ -449,32 +469,74 @@ impl App {
     }
 
     fn show_view(&mut self, ui: &mut egui::Ui) {
-        let world = self.engine.lock().expect("engine lock").world().clone();
-        if let Some(id) = self.view.show(ui, &world, Selection(self.selected)) {
+        self.view.toolbar(ui);
+        if ui.button("Undo pose edit").clicked() {
+            self.execute("edit undo");
+        }
+        let (world, rig) = {
+            let e = self.engine.lock().expect("engine lock");
+            (e.world().clone(), e.rig().clone())
+        };
+        let result = self.view.show(ui, &world, &rig, Selection(self.selected));
+        if let Some(id) = result.selected {
             self.selected = Some(id);
             self.refresh_from_world();
         }
+        self.execute_all(result.commands);
     }
 }
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.stick_device.is_some()
+            && (!ctx.input(|i| i.raw.focused) || self.selected != self.stick_device)
+        {
+            if self.stick_spring
+                && let Some(id) = self.stick_device
+            {
+                self.execute(&format!("input {id} joystick/x 0"));
+                self.execute(&format!("input {id} joystick/y 0"));
+            }
+            self.stick_device = None;
+        }
         self.installation.poll(ctx);
         if let Ok(mut e) = self.engine.lock() {
             e.poll();
+            self.desktop.tick(&mut e, ctx);
         }
         self.refresh_from_world();
         if self.quit.load(Ordering::SeqCst) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
-        ctx.request_repaint_after(Duration::from_millis(100));
+        ctx.request_repaint_after(Duration::from_millis(if self.desktop.active {
+            16
+        } else {
+            100
+        }));
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ui, |ui| {
             self.show_status_bar(ui);
+            if let Ok(mut engine) = self.engine.lock() {
+                self.desktop.show(ui, &mut engine);
+            }
+            if self
+                .engine
+                .lock()
+                .expect("engine lock")
+                .control_owner()
+                .is_some()
+            {
+                ui.disable();
+            }
+            egui::CollapsingHeader::new("Headset Window placement").show(ui, |ui| {
+                if let Ok(mut engine) = self.engine.lock() {
+                    self.headset_window.show(ui, &mut engine);
+                }
+            });
             egui::CollapsingHeader::new("Driver registration")
-                .default_open(true)
+                .default_open(false)
                 .show(ui, |ui| self.installation.show(ui));
             ui.separator();
             // The root ui is unbounded, so column sizes come from the viewport.
@@ -498,6 +560,9 @@ impl eframe::App for App {
                             self.show_editor(ui);
                             ui.separator();
                             self.show_presets(ui);
+                            let rig = self.engine.lock().expect("engine lock").rig().clone();
+                            let commands = rig_editor::show(ui, &rig, self.selected);
+                            self.execute_all(commands);
                         });
                 });
                 ui.separator();
@@ -520,6 +585,20 @@ impl eframe::App for App {
                 });
             });
         });
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        if let Ok(mut engine) = self.engine.lock() {
+            let _ = engine.stop_control();
+            if self.stick_spring
+                && let Some(id) = self.stick_device
+            {
+                let _ = engine.execute_line(&format!("input {id} joystick/x 0"));
+                let _ = engine.execute_line(&format!("input {id} joystick/y 0"));
+            }
+        }
     }
 }
 

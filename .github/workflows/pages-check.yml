@@ -1,0 +1,75 @@
+name: pages-check
+
+on:
+  pull_request:
+    paths:
+      - README.md
+      - docs/**
+      - scripts/integration/README.md
+      - scripts/check_pages.py
+      - _config.yml
+      - _layouts/**
+      - assets/**
+      - .github/workflows/pages-check.yml
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - docs/**
+      - scripts/integration/README.md
+      - scripts/check_pages.py
+      - _config.yml
+      - _layouts/**
+      - assets/**
+      - .github/workflows/pages-check.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build with the GitHub Pages environment
+        uses: actions/jekyll-build-pages@b113e835ba89136744d892a14204f22e2b568599 # v1.0.13
+        with:
+          source: ./
+          destination: ./_site
+      - name: Check generated pages and local links
+        run: python3 scripts/check_pages.py _site --baseurl /vr-dummy-headset
+      - name: Capture desktop and mobile previews
+        shell: bash
+        run: |
+          mkdir -p .tmp/pages-preview .tmp/pages-screenshots
+          ln -s "$GITHUB_WORKSPACE/_site" .tmp/pages-preview/vr-dummy-headset
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory .tmp/pages-preview > .tmp/pages-preview/server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8765/vr-dummy-headset/ > /dev/null; then
+              break
+            fi
+            sleep 0.5
+          done
+          google-chrome --headless --no-sandbox --disable-gpu --hide-scrollbars \
+            --window-size=1440,1200 --screenshot=.tmp/pages-screenshots/desktop.png \
+            http://127.0.0.1:8765/vr-dummy-headset/
+          google-chrome --headless --no-sandbox --disable-gpu --hide-scrollbars \
+            --window-size=390,1200 --screenshot=.tmp/pages-screenshots/mobile.png \
+            http://127.0.0.1:8765/vr-dummy-headset/
+      - name: Upload preview (no deployment)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pages-preview
+          path: |
+            _site/
+            .tmp/pages-screenshots/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error

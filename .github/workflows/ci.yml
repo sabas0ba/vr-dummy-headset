@@ -73,6 +73,9 @@ jobs:
       - name: Agent CLI contract
         run: ./scripts/integration/agent_cli.ps1 -Cli ./feeder/target/release/vrdummy-cli.exe
 
+      - name: Desktop control contract
+        run: ./scripts/integration/desktop_controls.ps1 -Cli ./feeder/target/release/vrdummy-cli.exe
+
       - name: Upload feeder binaries
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

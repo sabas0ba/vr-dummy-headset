@@ -1,0 +1,70 @@
+:root {
+  color-scheme: light;
+  --ink: #1c2d3e;
+  --muted: #526376;
+  --accent: #09637b;
+  --border: #d7e0e7;
+  --surface: #f3f6f9;
+  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans JP", sans-serif;
+  line-height: 1.8;
+  color: var(--ink);
+  background: #fff;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: var(--accent); text-underline-offset: .2em; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.skip-link { position: absolute; top: -5rem; left: 1rem; padding: .5rem 1rem; background: #fff; z-index: 2; }
+.skip-link:focus { top: .5rem; }
+.site-header { border-bottom: 1px solid var(--border); background: var(--surface); }
+.header-inner { max-width: 1440px; margin: auto; padding: 1.25rem 2rem; display: flex; align-items: baseline; gap: 1.5rem; }
+.brand { color: var(--ink); font-size: 1.2rem; font-weight: 750; text-decoration: none; }
+.site-tagline { color: var(--muted); font-size: .9rem; }
+.repository-link { margin-left: auto; }
+.site-shell { max-width: 1440px; margin: auto; display: grid; grid-template-columns: 15rem minmax(0, 1fr); gap: 3rem; padding: 2.5rem 2rem 4rem; }
+.site-nav { align-self: start; position: sticky; top: 1.5rem; font-size: .9rem; }
+.nav-title { margin: 0 0 .8rem; color: var(--muted); font-weight: 650; }
+.site-nav ul { list-style: none; margin: 0; padding: 0; }
+.site-nav a { display: block; padding: .45rem .75rem; border-left: 3px solid transparent; text-decoration: none; color: var(--muted); }
+.site-nav a:hover, .site-nav a[aria-current="page"] { border-color: var(--accent); background: var(--surface); color: var(--accent); }
+.document { min-width: 0; overflow-wrap: anywhere; }
+.document > :first-child { margin-top: 0; }
+h1, h2, h3, h4 { line-height: 1.4; font-weight: 700; scroll-margin-top: 1.5rem; }
+h1 { font-size: clamp(1.8rem, 3vw, 2.4rem); letter-spacing: -.025em; margin-bottom: 1.2rem; }
+h2 { font-size: 1.5rem; margin-top: 2.75rem; padding-bottom: .5rem; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.15rem; margin-top: 2rem; }
+p, ul, ol { margin-top: 1rem; margin-bottom: 1rem; }
+li + li { margin-top: .3rem; }
+.document img { display: block; max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: .5rem; margin: 1.5rem auto; }
+code, pre { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .9em; }
+code { padding: .15em .35em; background: var(--surface); border-radius: .2rem; }
+pre { overflow-x: auto; padding: 1.2rem; background: var(--surface); border: 1px solid var(--border); border-radius: .4rem; line-height: 1.65; overflow-wrap: normal; }
+pre code { padding: 0; background: transparent; font-size: 1em; }
+table { display: block; overflow-x: auto; border-collapse: collapse; width: 100%; margin: 1.5rem 0; font-size: .92em; }
+th, td { text-align: left; vertical-align: top; padding: .65rem .9rem; border: 1px solid var(--border); }
+th { background: var(--surface); }
+blockquote { border-left: 3px solid var(--accent); margin-left: 0; padding-left: 1.2rem; color: var(--muted); }
+.site-footer { border-top: 1px solid var(--border); padding: 1.5rem 2rem; display: flex; justify-content: center; flex-wrap: wrap; gap: 1.5rem; font-size: .85rem; color: var(--muted); }
+.highlight .c, .highlight .c1, .highlight .cm { color: #536575; }
+.highlight .k, .highlight .kd, .highlight .kn, .highlight .nt { color: #75409a; }
+.highlight .s, .highlight .s1, .highlight .s2 { color: #126437; }
+.highlight .nf, .highlight .nb { color: #075d80; }
+.highlight .m, .highlight .mi, .highlight .mf { color: #955200; }
+
+@media (max-width: 900px) {
+  .site-shell { grid-template-columns: minmax(0, 1fr); gap: 2rem; padding: 1.5rem 1.25rem 3rem; }
+  .site-nav { position: static; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+  .site-nav ul { display: flex; flex-wrap: wrap; gap: .25rem; }
+  .site-nav a { padding: .3rem .65rem; }
+  .header-inner { padding: 1rem 1.25rem; flex-wrap: wrap; gap: .5rem 1rem; }
+  .site-tagline { display: none; }
+}
+
+@media print {
+  .site-header, .site-nav, .site-footer, .skip-link { display: none; }
+  .site-shell { display: block; padding: 0; }
+  pre, table { overflow: visible; }
+  pre { white-space: pre-wrap; }
+}

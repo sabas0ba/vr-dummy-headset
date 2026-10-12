@@ -84,9 +84,41 @@ OpenVR の [`VR_PATHREG_OVERRIDE`](https://github.com/ValveSoftware/openvr/blob/
 で登録ファイルを `.tmp` 内に隔離し，実際の `vrpathreg` で登録・解除・冪等性・他ドライバ保持を確認する．
 既存の登録ファイルは変更せず，SteamVR も起動しない．GUI 指定時は対話デスクトップが必要．
 
+## PC 操作の試験
+
+```powershell
+.\scripts\integration\desktop_controls.ps1
+.\scripts\integration\desktop_controls.ps1 -Gui .\feeder\target\debug\vrdummy-gui.exe
+# 対話デスクトップ上で GUI を前面にし，対象ウィンドウ限定のキー入力を確認
+.\scripts\integration\gui_desktop.ps1
+# SteamVR + ダミー HMD が既に起動している場合のみ，位置を復元する実ウィンドウ試験
+.\scripts\integration\headset_window.ps1
+```
+
+独立した名前付きパイプと `.tmp` 内の保存設定を使い，GUI / CLI の状態・操作権の競合拒否・
+明示解除・500 ms の期限切れ・全身移動・FK/IK・Undo・ウィンドウ照会の JSON を確認する．
+`desktop_controls.ps1` は SteamVR / VRChat の起動や実ウィンドウの移動は行わない．
+`gui_desktop.ps1` はテスト GUI の前面化・最小化を行い，W / Esc とフォーカス喪失時の解除を確認する．
+`headset_window.ps1` は実ウィンドウを動かし，保存・再起動時の適用・削除を確認して元の位置に戻す．
+GUI 版には対話デスクトップが必要．
+Rust のテストでは IK の到達限界・縮退条件，解除対象入力，Undo，GUI の Esc と
+非描画フレーム中のフォーカス喪失も検証する．
+
+SteamVR E2E の **S10** は `control frame` によるスティック・ジャンプ・trigger・grip 入力が
+OpenVR のアクションに届き，更新停止後に中立へ戻ることを検証する．S9 と同様，
+VRChat 本体でのワールド操作を検証したことにはならない．
+
+VRChat 本体の手動確認では，テストワールドで次を確認する：
+
+1. GUI の Walk をキャプチャし，WASD で移動，マウスで視点，Q/E で旋回，Space でジャンプできる．
+2. 左右クリックの使用・掴みが期待どおり動き，Esc / Alt-Tab 後に入力が残らない．
+3. 3D 表示の手・足ドラッグと IK / FK を使い，アバターの追従と設定した寸法を確認する．
+4. SteamVR 起動後の Headset Window 移動と，保存後の再生成時の位置適用を確認する．
+
 ## CI（GitHub Actions，windows-latest）
 
 - ドライバ: CMake 構成・ビルド・ctest．
 - フィーダ: `cargo fmt --check`，`cargo clippy -D warnings`，`cargo test`，`cargo deny check`．
+- 制御 API: `agent_cli.ps1` と `desktop_controls.ps1`（CLI フィーダ）．
 - 成果物: ドライバフォルダとフィーダ実行ファイル．
 - Actions はコミット SHA で固定する．

@@ -67,6 +67,10 @@ pub enum OscArg {
 /// Parsed command.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
+    /// Headset Window placement and preferences.
+    Window(crate::headset_window::WindowCommand),
+    /// Desktop controls and rig editing.
+    Interaction(crate::interaction::InteractionCommand),
     /// `pos <dev> <x> <y> <z>`
     Position(DeviceRef, [f64; 3]),
     /// `move <dev> <dx> <dy> <dz>`
@@ -102,6 +106,8 @@ pub enum Command {
 /// Why a line could not be parsed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CommandError {
+    /// Invalid desktop/rig command.
+    Interaction(String),
     /// Empty line or comment.
     Empty,
     /// Unknown verb.
@@ -121,6 +127,7 @@ pub enum CommandError {
 impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Interaction(message) => f.write_str(message),
             Self::Empty => write!(f, "empty command"),
             Self::UnknownVerb(v) => write!(f, "unknown command: {v}"),
             Self::Arity(verb, n) => write!(f, "{verb}: expected {n} arguments"),
@@ -253,6 +260,18 @@ impl Command {
         let mut parts = line.split_whitespace();
         let verb = parts.next().ok_or(CommandError::Empty)?;
         let args: Vec<&str> = parts.collect();
+        if verb == "window" {
+            return crate::headset_window::WindowCommand::parse(&args)
+                .map(Self::Window)
+                .map_err(CommandError::Interaction);
+        }
+        if matches!(verb, "control" | "rig" | "ik" | "fk" | "edit") {
+            let mut words = vec![verb];
+            words.extend(&args);
+            return crate::interaction::InteractionCommand::parse(&words)
+                .map(Self::Interaction)
+                .map_err(CommandError::Interaction);
+        }
         match verb {
             "pos" => {
                 arity("pos", &args, 4)?;

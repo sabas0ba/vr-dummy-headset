@@ -237,6 +237,11 @@ fn run_control(config: &Config, line: &str, global: &GlobalOptions) -> ExitCode 
             Ok(vrdummy_core::Command::Status | vrdummy_core::Command::StatusJson)
         );
     let command = if snapshot { "status --json" } else { line };
+    let window_snapshot = global.json
+        && matches!(
+            vrdummy_core::Command::parse(line),
+            Ok(vrdummy_core::Command::Window(_))
+        );
     let reply =
         match control::send_line_with_timeout(&config.control.pipe_name, command, global.timeout) {
             Ok(reply) => reply,
@@ -261,7 +266,7 @@ fn run_control(config: &Config, line: &str, global: &GlobalOptions) -> ExitCode 
     } else if reply == "quit" {
         "{\"quit\":true}".to_owned()
     } else if let Some(text) = reply.strip_prefix("ok ") {
-        if snapshot {
+        if snapshot || window_snapshot {
             // A legacy server ignores the status option and returns text.
             // Refuse that response instead of emitting malformed JSON.
             if !text.starts_with("{\"schema_version\":1,") || !text.ends_with('}') {

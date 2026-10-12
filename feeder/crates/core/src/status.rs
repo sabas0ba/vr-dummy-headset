@@ -35,12 +35,13 @@ impl Engine {
         }).collect::<Vec<_>>().join(",");
         let display = &world.display;
         format!(
-            "{{\"schema_version\":1,\"connected\":{},\"devices\":[{devices}],\"display\":{{\"ipd_m\":{},\"projection_left\":{},\"projection_right\":{},\"swap_eyes\":{}}}}}",
+            "{{\"schema_version\":1,\"connected\":{},\"devices\":[{devices}],\"display\":{{\"ipd_m\":{},\"projection_left\":{},\"projection_right\":{},\"swap_eyes\":{}}},\"interaction\":{}}}",
             self.connected(),
             number(f64::from(display.ipd_m)),
             numbers(display.projection_left.map(f64::from)),
             numbers(display.projection_right.map(f64::from)),
             display.swap_eyes,
+            self.interaction_json(),
         )
     }
 }
