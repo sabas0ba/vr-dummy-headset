@@ -45,6 +45,8 @@ Markdown 内の文書リンクは引き続き `.md` で記述する．GitHub Pag
 `scripts/check_pages.py` で内部リンク・ページ内リンク・画像と公開除外対象を検証する．
 PC 幅・モバイル幅のスクリーンショットと生成 HTML は Actions の `pages-preview` 成果物から取得できる．
 このワークフローは検証専用であり，サイトを公開しない．
+CI のスクリーンショットはランナーの搭載フォントを使うため，日本語フォントがない環境では
+文字が四角で表示される．日本語の字形は，日本語フォントのあるブラウザで公開ページを確認する．
 
 実際の公開は **Deploy from a branch** が管理する **pages build and deployment** が担当する．
 ローカルへの Ruby や Node.js のインストールは不要．

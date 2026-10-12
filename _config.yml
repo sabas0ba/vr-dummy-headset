@@ -15,6 +15,8 @@ defaults:
 
 titles_from_headings:
   strip_title: false
+optional_front_matter:
+  remove_originals: true
 readme_index:
   enabled: true
   remove_originals: true

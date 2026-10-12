@@ -41,7 +41,7 @@ def check_site(root, baseurl):
         relative = path.relative_to(root)
         if relative.parts[0] in {"driver", "feeder", "third_party", "tests", ".tmp", ".github"}:
             errors.append(f"Unexpected published source/artifact: {relative}")
-        if path.suffix in {".ps1", ".py", ".exe", ".dll", ".toml"}:
+        if path.suffix in {".md", ".ps1", ".py", ".exe", ".dll", ".toml"}:
             errors.append(f"Unexpected published file: {relative}")
     for path, document in documents.items():
         page_url = prefix + path.relative_to(root).as_posix()
