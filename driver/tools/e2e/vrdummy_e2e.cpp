@@ -503,6 +503,35 @@ TEST_CASE("S9 VRChat bindings: move, rotate, jump, interact, grab and menu reach
     REQUIRE(Cmd("input ctrl-l b/click 0"));
 }
 
+TEST_CASE("S10 desktop controls: leased frames reach SteamVR and expire to neutral") {
+    ResetScene();
+    CHECK_MESSAGE(g_session.EnsureInputFocus(), "scene application has input focus");
+    REQUIRE(WaitFor([] { return g_session.Digital(g_session.actions.a, g_session.actions.right).bActive; }, 5000ms));
+    struct ReleaseControl {
+        ~ReleaseControl() { Cmd("control stop"); }
+    } release;
+    REQUIRE(Cmd("control begin agent walk"));
+    CHECK(WaitFor([] {
+        if (!Cmd("control frame agent 0.5 0.75 0 0 0 -0.5 1 1 1 0.02")) return false;
+        const auto move = g_session.Analog(g_session.actions.joystick, g_session.actions.left);
+        const auto turn = g_session.Analog(g_session.actions.joystick, g_session.actions.right);
+        return std::fabs(move.x - 0.5f) < 0.02f && std::fabs(move.y - 0.75f) < 0.02f &&
+               std::fabs(turn.x + 0.5f) < 0.02f &&
+               g_session.Digital(g_session.actions.a, g_session.actions.right).bState &&
+               g_session.Analog(g_session.actions.trigger, g_session.actions.right).x > 0.98f &&
+               g_session.Analog(g_session.actions.grip, g_session.actions.right).x > 0.98f;
+    }));
+    CHECK(WaitFor([] {
+        const auto move = g_session.Analog(g_session.actions.joystick, g_session.actions.left);
+        const auto turn = g_session.Analog(g_session.actions.joystick, g_session.actions.right);
+        return std::fabs(move.x) < 0.02f && std::fabs(move.y) < 0.02f && std::fabs(turn.x) < 0.02f &&
+               !g_session.Digital(g_session.actions.a, g_session.actions.right).bState &&
+               g_session.Analog(g_session.actions.trigger, g_session.actions.right).x < 0.02f &&
+               g_session.Analog(g_session.actions.grip, g_session.actions.right).x < 0.02f;
+    }, 2000ms));
+    CHECK(Control("control frame agent 0 1 0 0 0 0 0 0 0 0.02").rfind("err ", 0) == 0);
+}
+
 int main(int argc, char** argv) {
     doctest::Context context;
     context.applyCommandLine(argc, argv);

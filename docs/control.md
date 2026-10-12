@@ -87,6 +87,7 @@ SteamVR の実測値やドライバ側の適用完了通知ではない．GUI �
 | `devices[].linear_velocity_m_s`, `angular_velocity_rad_s` | 速度と角速度 |
 | `devices[].inputs` | `component_id` と `value` の配列 |
 | `display` | `ipd_m`, `projection_left`, `projection_right`, `swap_eyes` |
+| `interaction` | `owner`（`null` / `gui` / `agent`），`mode`，`lease_ms`，`undo_count`，`rig`（骨長・寸法・関節位置・FK 角） |
 
 JSON で表せない非有限数は `null` として返す．状態照会は録画しない．旧版の GUI／フィーダは
 JSON 状態取得に対応していないため，CLI と同じ版へ更新して再起動する．
@@ -132,6 +133,75 @@ JSON 状態取得に対応していないため，CLI と同じ版へ更新し�
 
 GUI ではパスを入力して Register / Unregister を押す．状態は約 3 秒ごとに更新される．
 外部操作の処理中もデバイス編集を継続できる．SteamVR の再起動は利用者が行う．
+
+## PC 操作と編集
+
+以下は常駐フィーダへ `vrdummy-cli set --json <コマンド>` で送る．GUI も同じコマンドを使用する．
+新しい操作の数値は有限値かつ絶対値 1000000 以下とし，各項目の範囲をさらに適用する．
+
+| コマンド | 動作 |
+|---|---|
+| `control begin <gui\|agent> <walk\|rig>` | 操作権を取得．既存の所有者がいれば拒否 |
+| `control frame <gui\|agent> <x> <forward> <up> <yaw> <pitch> <turn> <jump> <use> <grip> <dt>` | 操作権を更新して入力を適用 |
+| `control stop` | 所有者を問わず操作を解除 |
+| `rig translate <x> <y> <z>` | 存在する全デバイスを追跡座標で相対移動（m） |
+| `rig yaw <degrees>` | HMD 位置を中心に全デバイスを +Y 軸回転 |
+| `ik <ctrl-l\|ctrl-r\|trk1\|trk2> <x> <y> <z>` | 到達範囲に制限した手・足の位置（m）．先端の向きは保持 |
+| `fk <device> <yaw> <pitch> <bend>` | 同じ手・足の上腕／大腿 yaw・pitch と肘／膝の曲げ角（度，各 -180..180） |
+| `rig lengths <arm\|leg> <upper> <lower>` | 骨長（各 0.05..2 m） |
+| `rig proportions <shoulder-width> <hip-width> <shoulder-height>` | 肩幅・腰幅・腰から肩の高さ（各 0.05..2 m） |
+| `edit checkpoint` | ポーズとリグ設定を保存（最大 32 件） |
+| `edit undo` | 直前の保存へ戻す．入力値や表示設定は戻さない |
+
+`frame` の x/forward/up/turn は -1..1，yaw/pitch は今回の差分角 -90..90 度，
+jump/use/grip は 0..1，dt は 0..0.1 秒．水平の斜め入力は長さ 1 以下に正規化する．
+マウス相当の回転は HMD のみへ適用し，pitch は ±85 度に制限する．
+
+- `walk`: 左スティック XY を移動，右スティック X を旋回，右 A をジャンプ，
+  右 trigger を使用，右 grip を掴みに使う．up/dt は移動に使わない．
+  use/grip の click は 0.5 以上でオン．動作はアプリのバインディングと設定に依存する．
+- `rig`: 視点の yaw に合わせて全ポーズを最大 1 m/s で移動し，turn は右向き最大 90 度/s．
+  jump/use/grip は使わない．VR アプリの衝突・移動制限は扱わない．
+- 更新は 500 ms 未満の間隔で送り，通常は 20〜60 Hz を推奨する．期限後の最初の
+  フィーダ処理で所有権と対象入力を解除する．通信失敗時は `control stop` を試み，再照会する．
+  期限切れ後の `frame` は拒否され，明示的な `begin` が必要．
+- 操作中の `pos` / `input` / リグ編集等は拒否する．`status`，`sync`，`window`，`quit`，
+  `control stop` は使用可能．所有者名は入力源の識別用で，認証機構ではない．
+- Esc，フォーカス喪失，GUI 終了，ドライバ切断・再接続でも操作を解除する．
+  左スティック XY，右スティック XY，右 A，右 trigger value/click，右 grip value/click を 0 にする．
+  その他の手動設定した入力は変更しない．
+- FK/IK は `trk0` の位置・回転を腰の座標系とする 2 ボーンの編集機能．
+  対象デバイスと `trk0` がなければ拒否する．VRChat の IK ソルバとは独立している．
+  任意の編集を Undo 対象にする場合は，変更前に `edit checkpoint` を送る．
+
+GUI の入力キャプチャは GUI がフォーカスを持つ間だけ有効．ワールド表示は Headset Window
+で確認する．Agent は同じ制御パイプへ接続でき，`status --json` の `interaction` で操作権を確認できる．
+継続操作ではプロセス起動時間の影響を避けるため，名前付きパイプへ接続を保ち，
+1 行送信・1 行応答を繰り返す．GUI のキャプチャを Agent から開始することはできない．
+`control begin gui ...` は GUI 内部用の所有者名であり，OS の入力キャプチャを行わない．
+
+## Headset Window
+
+| コマンド | 動作 |
+|---|---|
+| `window status` | 実ウィンドウの位置，モニタ一覧，保存位置を取得 |
+| `window move <x> <y>` | 起動済み Headset Window を物理ピクセル座標へ移動 |
+| `window monitor <index>` | `status.monitors` の 0 始まりインデックスのモニタ左上へ移動 |
+| `window save <x> <y>` | 位置を保存し，存在するウィンドウへ適用．以後は新規ウィンドウを約 1 秒間隔で検出 |
+| `window forget` | フィーダの保存位置を削除（現在位置は変えない） |
+
+Windows 専用．`vrcompositor.exe` が所有する `Headset Window` のみを対象とする．
+移動時にフォーカスを奪わず，全モニタの外に出る要求や複数の対象ウィンドウは拒否する．
+座標は負値も許容する．モニタ番号は Windows の表示デバイス名順で，接続構成により変化する．
+
+`set --json window ...` の `result` は全操作で同じオブジェクト形式：`schema_version`，
+`windows`（handle/process_id/bounds），`monitors`（name/bounds/primary），
+`saved_position`，`last_error`．bounds は `[左, 上, 幅, 高さ]`．この座標は OS からの実測値．
+保存が成功しても自動適用できなければ `last_error` に理由を返す．
+
+保存先は `%LOCALAPPDATA%/vrdummy/headset-window.json`．`VRDUMMY_STATE_DIR` で親フォルダを変更できる．
+SteamVR 設定ファイルは書き換えない．保存位置の適用にはフィーダの実行が必要．
+既に動作中の別フィーダへ保存設定を共有する用途ではなく，GUI または CLI の常駐プロセスを 1 個使う．
 
 ## シナリオファイル
 

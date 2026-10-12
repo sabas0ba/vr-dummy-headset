@@ -122,6 +122,52 @@ GUI を起動したまま，別の端末や AI Agent から同じ設定を指定
 `--json` は状態・操作結果を標準出力に返す．状態はフィーダが保持する指令値であり，
 SteamVR の実測値ではない．コマンド一覧と終了コードは [docs/control.md](docs/control.md) を参照．
 
+### PC からの移動・視点操作
+
+GUI の **Desktop controls** でモードを選び，**Capture keyboard / mouse** を押す．
+
+| 操作 | キー |
+|---|---|
+| 前後左右移動 | WASD（Shift で入力を最大にする） |
+| 視点回転 | マウス |
+| 左右旋回 | Q / E |
+| ジャンプ・使用・掴み | Space / 左クリック / 右クリック |
+| 上下移動（Rig モード） | R / F |
+| 操作解除 | Esc，または GUI がフォーカスを失う |
+
+**Walk (VRChat input)** は左スティック等へ入力を送り，アプリ側の移動機能を使う．
+**Rig (tracking poses)** は全デバイスの追跡位置をまとめて動かす．Rig の移動速度は
+通常 0.5 m/s，Shift で 1 m/s，上下 1 m/s，旋回 90 度/s．
+GUI をフォーカスしたまま Headset Window の映像を見て操作する．VRChat のウィンドウへ
+フォーカスを移すと解除される．入力更新が 500 ms 途絶えた場合も解除し，自動再開しない．
+
+### 手・トラッカーと入力の編集
+
+- 中央のデバイスを左ドラッグして移動する．**Move** の隣で画面平面，X/Y/Z 軸，XY/XZ/YZ 平面を選ぶ．
+  Ctrl で 5 cm 刻み，Esc でドラッグ開始時へ戻す．**Rotate** は選択軸の回転．
+- 右ドラッグで表示の視点回転，中ドラッグで表示の高さ，ホイールで拡大縮小．
+- **Hand/foot IK** を有効にすると，手・足を腕／脚の到達範囲に制限して動かす．
+  左側の **FK / IK rig** で骨長・体格と FK の関節角を編集する．`trk0` を腰として使う
+  簡易編集リグであり，VRChat アバターの骨格を読み取るものではない．**Undo pose edit** で戻す．
+- コントローラ選択時の円形スティックをドラッグして方向・量を設定する．
+  **Spring return on release** を外すと値を保持する．CUI の変更も円形表示・スライダー・ボタンに反映する．
+
+### Headset Window の位置
+
+GUI の **Headset Window placement** で X/Y（物理ピクセル）を指定して **Move now** を押す．
+モニタボタンでそのモニタの左上に移動できる．**Save placement** は位置を保存し，
+フィーダ実行中にウィンドウが生成されたときにも適用する．SteamVR だけを起動した場合には
+フィーダの保存位置は適用されない．CUI からも同じ操作ができる：
+
+```powershell
+.\feeder\target\release\vrdummy-cli.exe set --json window status
+.\feeder\target\release\vrdummy-cli.exe set --json window move 100 100
+.\feeder\target\release\vrdummy-cli.exe set --json window save 100 100
+.\feeder\target\release\vrdummy-cli.exe set --json window forget
+```
+
+操作権の取得・更新，FK/IK 等の CUI 構文は [docs/control.md](docs/control.md) を参照．
+
 ## ライセンス
 
 Apache-2.0．third_party 配下は各ライセンス（OpenVR SDK: BSD-3-Clause，doctest: MIT）に従う．

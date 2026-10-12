@@ -38,6 +38,8 @@ impl Reply {
 /// Execution error.
 #[derive(Debug)]
 pub enum EngineError {
+    /// Desktop control ownership or rig editing error.
+    Interaction(String),
     /// The command line could not be parsed.
     Command(CommandError),
     /// Unknown preset name.
@@ -51,6 +53,7 @@ pub enum EngineError {
 impl std::fmt::Display for EngineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Interaction(message) => f.write_str(message),
             Self::Command(e) => write!(f, "{e}"),
             Self::UnknownPreset(n) => write!(
                 f,
@@ -85,7 +88,9 @@ struct Recorder {
 /// Feeder state machine: world, driver connection, OSC sender, recorder.
 pub struct Engine {
     config: Config,
-    world: World,
+    pub(crate) world: World,
+    pub(crate) interaction: crate::interaction::InteractionState,
+    window: crate::headset_window::Manager,
     client: Option<DriverClient>,
     last_connect_attempt: Option<Instant>,
     osc: Option<OscSender>,
@@ -98,6 +103,8 @@ impl Engine {
         Self {
             config,
             world: World::default(),
+            interaction: crate::interaction::InteractionState::default(),
+            window: crate::headset_window::Manager::default(),
             client: None,
             last_connect_attempt: None,
             osc: None,
@@ -113,6 +120,11 @@ impl Engine {
     /// Current world.
     pub fn world(&self) -> &World {
         &self.world
+    }
+
+    /// Actual Headset Window placement and saved preferences.
+    pub fn headset_window_status(&self) -> Result<crate::headset_window::Status, String> {
+        self.window.status()
     }
 
     /// Whether the driver pipe is open.
@@ -132,6 +144,8 @@ impl Engine {
         let timeout = Duration::from_millis(self.config.driver.handshake_timeout_ms);
         match DriverClient::connect(&self.config.driver.pipe_name, timeout) {
             Ok(client) => {
+                let _ = self.stop_control();
+                self.interaction.rig.invalidate();
                 self.world.reconcile_devices(client.devices());
                 self.client = Some(client);
                 log::debug!("initial sync");
@@ -150,6 +164,7 @@ impl Engine {
     /// Closes the driver connection (sending Goodbye). `poll` reconnects
     /// after `reconnect_interval_ms`; state is kept and resynchronised then.
     pub fn disconnect(&mut self) {
+        let _ = self.stop_control();
         if self.client.take().is_some() {
             log::info!("disconnected from driver");
         }
@@ -158,6 +173,8 @@ impl Engine {
 
     /// Drives reconnection and drains driver log records. Call regularly.
     pub fn poll(&mut self) {
+        self.expire_control();
+        self.window.poll();
         if let Some(client) = self.client.as_mut() {
             while let Some(msg) = client.try_recv() {
                 if let Message::Log(l) = msg {
@@ -171,6 +188,7 @@ impl Engine {
             if !client.alive() {
                 log::warn!("driver connection lost");
                 self.client = None;
+                let _ = self.stop_control();
             }
         }
         if self.client.is_none() {
@@ -207,7 +225,10 @@ impl Engine {
         if let Some(rec) = self.recorder.as_mut()
             && !matches!(
                 command,
-                Command::Status | Command::StatusJson | Command::Quit
+                Command::Status
+                    | Command::StatusJson
+                    | Command::Quit
+                    | Command::Window(crate::headset_window::WindowCommand::Status)
             )
         {
             let t = rec.start.elapsed().as_secs_f64();
@@ -218,13 +239,28 @@ impl Engine {
 
     /// Executes a parsed command.
     pub fn execute(&mut self, command: &Command) -> Result<Reply, EngineError> {
+        self.expire_control();
+        self.check_owner(command)?;
         log::debug!("execute: {command:?}");
         match command {
+            Command::Window(command) => {
+                let status = self
+                    .window
+                    .execute(command)
+                    .map_err(EngineError::Interaction)?;
+                return Ok(Reply::Ok(
+                    serde_json::to_string(&status)
+                        .map_err(|e| EngineError::Interaction(e.to_string()))?,
+                ));
+            }
+            Command::Interaction(command) => return self.execute_interaction(command),
             Command::Position(d, p) => {
+                self.interaction.rig.invalidate();
                 self.world.set_position(d.device_id(), *p);
                 self.send_pose(d.device_id())?;
             }
             Command::Move(d, delta) => {
+                self.interaction.rig.invalidate();
                 let id = d.device_id();
                 let mut p = self.world.pose(id).map_or([0.0; 3], |p| p.position);
                 for i in 0..3 {
@@ -234,10 +270,12 @@ impl Engine {
                 self.send_pose(id)?;
             }
             Command::Rotation(d, q) => {
+                self.interaction.rig.invalidate();
                 self.world.set_rotation(d.device_id(), *q);
                 self.send_pose(d.device_id())?;
             }
             Command::Euler(d, [yaw, pitch, roll]) => {
+                self.interaction.rig.invalidate();
                 self.world
                     .set_rotation(d.device_id(), quat_from_euler_deg(*yaw, *pitch, *roll));
                 self.send_pose(d.device_id())?;
@@ -265,6 +303,7 @@ impl Engine {
                 self.send_display()?;
             }
             Command::Preset(name, height) => {
+                self.interaction.rig.invalidate();
                 if !presets::apply(&mut self.world, name, *height) {
                     return Err(EngineError::UnknownPreset(name.clone()));
                 }
@@ -284,7 +323,10 @@ impl Engine {
             Command::Sync => self.sync_all()?,
             Command::Status => return Ok(Reply::Ok(self.status_line())),
             Command::StatusJson => return Ok(Reply::Ok(self.status_json())),
-            Command::Quit => return Ok(Reply::Quit),
+            Command::Quit => {
+                self.stop_control()?;
+                return Ok(Reply::Quit);
+            }
         }
         Ok(Reply::Ok(String::new()))
     }
@@ -324,7 +366,7 @@ impl Engine {
         Ok(())
     }
 
-    fn send_pose(&mut self, device_id: u16) -> Result<(), EngineError> {
+    pub(crate) fn send_pose(&mut self, device_id: u16) -> Result<(), EngineError> {
         let Some(pose) = self.world.pose(device_id).cloned() else {
             return Ok(());
         };
@@ -333,7 +375,7 @@ impl Engine {
         self.send(&Message::Pose(pose))
     }
 
-    fn send_all_poses(&mut self) -> Result<(), EngineError> {
+    pub(crate) fn send_all_poses(&mut self) -> Result<(), EngineError> {
         let ids: Vec<u16> = self.world.device_ids().collect();
         for id in ids {
             self.send_pose(id)?;
@@ -341,7 +383,7 @@ impl Engine {
         Ok(())
     }
 
-    fn send_input(
+    pub(crate) fn send_input(
         &mut self,
         device_id: u16,
         component_id: u16,
