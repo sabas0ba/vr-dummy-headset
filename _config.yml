@@ -1,0 +1,59 @@
+title: vr-dummy-headset
+description: SteamVR 仮想 HMD・コントローラ・トラッカーを GUI と CLI から操作するデバッグツール
+lang: ja
+url: https://sabas0ba.github.io
+baseurl: /vr-dummy-headset
+repository: sabas0ba/vr-dummy-headset
+
+# Keep the theme in this repository. Use GitHub Pages' built-in Markdown plugins.
+theme: null
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+
+titles_from_headings:
+  strip_title: false
+readme_index:
+  enabled: true
+  remove_originals: true
+relative_links:
+  enabled: true
+
+navigation:
+  - title: はじめに・使い方
+    url: /
+  - title: 制御コマンド
+    url: /docs/control.html
+  - title: 動作の全体像
+    url: /docs/walkthrough.html
+  - title: 設計
+    url: /docs/design.html
+  - title: 座標系
+    url: /docs/coordinates.html
+  - title: IPC プロトコル
+    url: /docs/protocol.html
+  - title: 試験方針
+    url: /docs/testing.html
+  - title: 統合試験・E2E
+    url: /scripts/integration/
+  - title: サイトの公開・更新
+    url: /docs/publishing.html
+
+# Publish documentation and images, not source trees or build artifacts.
+exclude:
+  - driver
+  - feeder
+  - third_party
+  - tests
+  - scripts/bindings
+  - scripts/integration/scenarios
+  - "**/*.ps1"
+  - "**/*.py"
+  - rust-toolchain.toml
+  - LICENSE
+  - Gemfile
+  - Gemfile.lock
+  - vendor
+  - node_modules

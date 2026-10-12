@@ -4,6 +4,9 @@
 
 # Temporary work inside the repository
 /.tmp/
+/_site/
+/.jekyll-cache/
+/.jekyll-metadata
 
 # Editors
 /.vs/

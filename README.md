@@ -9,6 +9,7 @@ SteamVR から認識される仮想デバイス一式（HMD，左右コントロ
 - 制御コマンド: [docs/control.md](docs/control.md)
 - 試験方針: [docs/testing.md](docs/testing.md)
 - 統合試験と E2E: [scripts/integration/README.md](scripts/integration/README.md)
+- サイトの公開・更新: [docs/publishing.md](docs/publishing.md)
 
 ## GUI の画面構成
 

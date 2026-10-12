@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="{{ site.lang | default: 'ja' }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page.title | default: site.title | escape }}{% if page.title and page.title != site.title %} · {{ site.title | escape }}{% endif %}</title>
+    <meta name="description" content="{{ site.description | escape }}">
+    <link rel="stylesheet" href="{{ '/assets/css/site.css' | relative_url }}">
+  </head>
+  <body>
+    <a class="skip-link" href="#content">本文へ移動</a>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="{{ '/' | relative_url }}">{{ site.title | escape }}</a>
+        <span class="site-tagline">SteamVR デバッグツール</span>
+        <a class="repository-link" href="https://github.com/{{ site.repository }}">GitHub</a>
+      </div>
+    </header>
+    <div class="site-shell">
+      <nav class="site-nav" aria-label="ドキュメント">
+        <p class="nav-title">ドキュメント</p>
+        <ul>
+          {% for item in site.navigation %}
+          <li><a href="{{ item.url | relative_url }}"{% if page.url == item.url or page.url == '/index.html' and item.url == '/' %} aria-current="page"{% endif %}>{{ item.title | escape }}</a></li>
+          {% endfor %}
+        </ul>
+      </nav>
+      <main id="content" class="document" tabindex="-1">
+        {{ content }}
+      </main>
+    </div>
+    <footer class="site-footer">
+      <span>{{ site.title | escape }}</span>
+      <a href="https://github.com/{{ site.repository }}/blob/main/LICENSE">Apache-2.0</a>
+      <a href="https://github.com/{{ site.repository }}">ソースコード・課題報告</a>
+    </footer>
+  </body>
+</html>
