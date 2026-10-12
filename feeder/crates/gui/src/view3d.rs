@@ -65,6 +65,22 @@ pub struct ViewResult {
     pub commands: Vec<String>,
 }
 
+fn snap_translation(position: [f64; 3], origin: [f64; 3], constraint: Constraint) -> [f64; 3] {
+    let delta: [f64; 3] = std::array::from_fn(|i| position[i] - origin[i]);
+    if constraint == Constraint::Screen {
+        // Quantize distance along the drag, preserving the camera plane.
+        let length = delta.iter().map(|v| v * v).sum::<f64>().sqrt();
+        let scale = if length > 1e-9 {
+            (length / 0.05).round() * 0.05 / length
+        } else {
+            0.0
+        };
+        std::array::from_fn(|i| origin[i] + delta[i] * scale)
+    } else {
+        std::array::from_fn(|i| origin[i] + (delta[i] / 0.05).round() * 0.05)
+    }
+}
+
 impl View3d {
     pub fn toolbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
@@ -227,6 +243,61 @@ fn normalize(v: [f32; 3]) -> [f32; 3] {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constrained_drag_and_snap_preserve_orthogonal_coordinates() {
+        let view = View3d::default();
+        let cam = Camera::new(
+            &view,
+            Rect::from_min_size(Pos2::ZERO, Vec2::new(600.0, 600.0)),
+        );
+        let position = [0.173, 1.237, -0.313];
+        let origin = cam.project(position).unwrap();
+        for (constraint, fixed) in [
+            (Constraint::X, vec![1, 2]),
+            (Constraint::Y, vec![0, 2]),
+            (Constraint::Z, vec![0, 1]),
+            (Constraint::XY, vec![2]),
+            (Constraint::XZ, vec![1]),
+            (Constraint::YZ, vec![0]),
+        ] {
+            let drag = Drag {
+                id: 1,
+                origin,
+                position,
+                rotation: [1.0, 0.0, 0.0, 0.0],
+                constraint,
+            };
+            let moved = cam
+                .drag_position(&drag, origin + Vec2::new(35.0, -23.0))
+                .unwrap();
+            let snapped = snap_translation(moved, position, constraint);
+            for i in fixed {
+                assert!((moved[i] - position[i]).abs() < 1e-6);
+                assert!((snapped[i] - position[i]).abs() < 1e-6);
+            }
+        }
+        let drag = Drag {
+            id: 1,
+            origin,
+            position,
+            rotation: [1.0, 0.0, 0.0, 0.0],
+            constraint: Constraint::Screen,
+        };
+        let moved = cam
+            .drag_position(&drag, origin + Vec2::new(35.0, -23.0))
+            .unwrap();
+        let snapped = snap_translation(moved, position, Constraint::Screen);
+        let depth: f64 = (0..3)
+            .map(|i| (snapped[i] - position[i]) * f64::from(cam.rot[2][i]))
+            .sum();
+        assert!(depth.abs() < 1e-6);
+    }
+}
+
 /// Edges of a box whose corners are indexed by bits (x, y, z).
 const BOX_EDGES: [(usize, usize); 12] = [
     (0, 1),
@@ -386,7 +457,8 @@ impl View3d {
                     Tool::Move => {
                         if let Some(mut position) = cam.drag_position(drag, pointer) {
                             if ui.input(|i| i.modifiers.ctrl) {
-                                position = position.map(|v| (v / 0.05).round() * 0.05);
+                                position =
+                                    snap_translation(position, drag.position, drag.constraint);
                             }
                             let verb = if self.ik && Rig::supports(drag.id) {
                                 "ik"

@@ -51,7 +51,6 @@ struct App {
     desktop: desktop::Desktop,
     headset_window: headset_window::Panel,
     stick_spring: bool,
-    stick_dragging: bool,
     stick_device: Option<u16>,
     installation: installation::InstallationPanel,
     engine: SharedEngine,
@@ -81,7 +80,6 @@ impl App {
             desktop: desktop::Desktop::default(),
             headset_window: headset_window::Panel::default(),
             stick_spring: true,
-            stick_dragging: false,
             stick_device: None,
             installation: installation::InstallationPanel::default(),
             engine,
@@ -313,15 +311,14 @@ impl App {
                 cmds.push(format!("input {dev} grip/value {}", self.editor.grip));
             }
             ui.checkbox(&mut self.stick_spring, "Spring return on release");
+            let mut dragging = self.stick_device.is_some();
             let mut js = analog::stick(
                 ui,
                 &mut self.editor.joystick,
                 self.stick_spring,
-                &mut self.stick_dragging,
+                &mut dragging,
             );
-            if self.stick_dragging {
-                self.stick_device = Some(selected);
-            }
+            self.stick_device = dragging.then_some(selected);
             js |= ui
                 .add(egui::Slider::new(&mut self.editor.joystick[0], -1.0..=1.0).text("joystick x"))
                 .changed();
@@ -491,7 +488,7 @@ impl App {
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if self.stick_dragging
+        if self.stick_device.is_some()
             && (!ctx.input(|i| i.raw.focused) || self.selected != self.stick_device)
         {
             if self.stick_spring
@@ -500,7 +497,7 @@ impl eframe::App for App {
                 self.execute(&format!("input {id} joystick/x 0"));
                 self.execute(&format!("input {id} joystick/y 0"));
             }
-            self.stick_dragging = false;
+            self.stick_device = None;
         }
         self.installation.poll(ctx);
         if let Ok(mut e) = self.engine.lock() {
@@ -595,8 +592,7 @@ impl Drop for App {
     fn drop(&mut self) {
         if let Ok(mut engine) = self.engine.lock() {
             let _ = engine.stop_control();
-            if self.stick_dragging
-                && self.stick_spring
+            if self.stick_spring
                 && let Some(id) = self.stick_device
             {
                 let _ = engine.execute_line(&format!("input {id} joystick/x 0"));

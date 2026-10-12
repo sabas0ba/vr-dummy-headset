@@ -89,11 +89,18 @@ OpenVR の [`VR_PATHREG_OVERRIDE`](https://github.com/ValveSoftware/openvr/blob/
 ```powershell
 .\scripts\integration\desktop_controls.ps1
 .\scripts\integration\desktop_controls.ps1 -Gui .\feeder\target\debug\vrdummy-gui.exe
+# 対話デスクトップ上で GUI を前面にし，対象ウィンドウ限定のキー入力を確認
+.\scripts\integration\gui_desktop.ps1
+# SteamVR + ダミー HMD が既に起動している場合のみ，位置を復元する実ウィンドウ試験
+.\scripts\integration\headset_window.ps1
 ```
 
 独立した名前付きパイプと `.tmp` 内の保存設定を使い，GUI / CLI の状態・操作権の競合拒否・
 明示解除・500 ms の期限切れ・全身移動・FK/IK・Undo・ウィンドウ照会の JSON を確認する．
-SteamVR / VRChat の起動や実ウィンドウの移動は行わない．GUI 版には対話デスクトップが必要．
+`desktop_controls.ps1` は SteamVR / VRChat の起動や実ウィンドウの移動は行わない．
+`gui_desktop.ps1` はテスト GUI の前面化・最小化を行い，W / Esc とフォーカス喪失時の解除を確認する．
+`headset_window.ps1` は実ウィンドウを動かし，保存・再起動時の適用・削除を確認して元の位置に戻す．
+GUI 版には対話デスクトップが必要．
 Rust のテストでは IK の到達限界・縮退条件，解除対象入力，Undo，GUI の Esc と
 非描画フレーム中のフォーカス喪失も検証する．
 

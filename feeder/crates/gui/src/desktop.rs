@@ -49,11 +49,16 @@ impl Desktop {
             !i.raw.focused || i.key_pressed(Key::Escape) || i.viewport().close_requested()
         });
         if release
-            || ctx.egui_wants_keyboard_input()
-            || !engine
+            || ctx.text_edit_focused()
+            || engine
                 .control_owner()
-                .is_some_and(|(owner, _)| owner == "gui")
+                .is_none_or(|(owner, _)| owner != "gui")
         {
+            log::debug!(
+                "releasing desktop capture: window/escape/close={release}, text_edit={}, owner={:?}",
+                ctx.text_edit_focused(),
+                engine.control_owner()
+            );
             self.stop(engine, ctx);
             return;
         }
@@ -216,5 +221,19 @@ mod tests {
         desktop.tick(&mut engine, &ctx);
         ctx.end_pass().textures_delta.clear();
         assert!(engine.control_owner().is_none());
+    }
+
+    #[test]
+    fn focused_capture_button_does_not_cancel_input() {
+        let (mut desktop, mut engine, ctx) = active();
+        ctx.begin_pass(egui::RawInput {
+            focused: true,
+            ..Default::default()
+        });
+        ctx.memory_mut(|m| m.request_focus(egui::Id::new("capture-button")));
+        desktop.tick(&mut engine, &ctx);
+        ctx.end_pass().textures_delta.clear();
+        assert!(desktop.active);
+        assert_eq!(engine.control_owner(), Some(("gui", Mode::Walk)));
     }
 }
