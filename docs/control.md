@@ -109,6 +109,30 @@ JSON 状態取得に対応していないため，CLI と同じ版へ更新し�
 ドライバ未接続でもフィーダの状態変更は成功し，再接続時に送信されるため，
 ドライバへの接続が必要な処理では `result.connected` も確認する．
 
+## ドライバの登録管理
+
+`vrdummy-cli driver <status|register|unregister> [--path <dir>] [--steamvr-dir <dir>] [--json] [--timeout-ms <ms>]`
+は常駐フィーダを必要としない．GUI の Driver registration も同じ処理を使用する．
+
+- `--path` は `driver.vrdrivermanifest` を含むフォルダ．省略時は既存の vrdummy 登録先，
+  未登録なら作業ディレクトリからの `driver/build/msvc-x64/vrdummy`．複数登録がある場合は明示指定する．
+- SteamVR は OpenVR 登録ファイルの runtime から検出する．`--steamvr-dir` で指定も可能．
+- 登録は manifest の名前が `vrdummy` であり，Windows x64 DLL が存在する場合のみ許可する．
+  別の場所にある vrdummy の重複登録は拒否する．解除は選択したパスだけを対象とする．
+  登録後にフォルダを削除した場合は，元のパスを `--path` に指定して解除できる．
+- JSON は既存の `schema_version` / `ok` / `result` 形式．`result` は `driver_dir`，`steamvr_dir`，
+  `registered`，`registered_paths`，`package_valid`，`tool_available`，`changed`，`restart_required`．
+  `registered` は選択したパスの登録状態であり，ドライバのロード・有効化・接続を保証しない．
+- 登録・解除は `vrpathreg.exe` を使用し，操作後に登録ファイルを読み直して確認する．
+  登録済みへの再登録，未登録への解除は `changed: false` で成功する．
+  `restart_required: true` は今回の変更が次回の SteamVR 起動で反映されることを示す．
+- 終了コードは成功 0，引数エラー 2，登録管理エラー 1（`driver_management_error`）．
+  このコマンドの `--timeout-ms` は vrpathreg 子プロセスの期限であり，既定 2000 ms．
+  期限超過時は状態を再照会する．SteamVR の起動・終了，アドオンのブロック解除は行わない．
+
+GUI ではパスを入力して Register / Unregister を押す．状態は約 3 秒ごとに更新される．
+外部操作の処理中もデバイス編集を継続できる．SteamVR の再起動は利用者が行う．
+
 ## シナリオファイル
 
 先頭に開始からの秒数を付ける．時刻は単調非減少．

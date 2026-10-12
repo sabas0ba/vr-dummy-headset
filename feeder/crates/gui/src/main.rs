@@ -8,6 +8,7 @@
 //! frame, so changes made elsewhere are shown.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod installation;
 mod view3d;
 
 use std::path::PathBuf;
@@ -43,6 +44,7 @@ struct DeviceEditor {
 }
 
 struct App {
+    installation: installation::InstallationPanel,
     engine: SharedEngine,
     _control: Option<ControlServer>,
     quit: Arc<AtomicBool>,
@@ -67,6 +69,7 @@ impl App {
             .map(|(name, id)| (name, id, false))
             .collect();
         let mut app = Self {
+            installation: installation::InstallationPanel::default(),
             engine,
             _control: control,
             quit,
@@ -456,6 +459,7 @@ impl App {
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.installation.poll(ctx);
         if let Ok(mut e) = self.engine.lock() {
             e.poll();
         }
@@ -469,6 +473,9 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ui, |ui| {
             self.show_status_bar(ui);
+            egui::CollapsingHeader::new("Driver registration")
+                .default_open(true)
+                .show(ui, |ui| self.installation.show(ui));
             ui.separator();
             // The root ui is unbounded, so column sizes come from the viewport.
             let content = ui.ctx().content_rect();

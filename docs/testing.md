@@ -70,6 +70,20 @@ SteamVR 非依存の結合試験は 2 箇所にある．
 シナリオファイル再生，フィーダ切断時の追跡喪失，SteamVR 再起動後のシャペロン設定の保持を
 確認する．手順は `scripts/integration/README.md` を参照．
 
+## 登録管理の実プロセス試験（Windows）
+
+SteamVR とビルド済みドライバが存在する環境で実行する．
+
+```powershell
+.\scripts\integration\driver_registration.ps1
+# GUI の Register / Unregister ボタンも Windows UI Automation で操作する
+.\scripts\integration\driver_registration.ps1 -Gui .\feeder\target\debug\vrdummy-gui.exe
+```
+
+OpenVR の [`VR_PATHREG_OVERRIDE`](https://github.com/ValveSoftware/openvr/blob/0924064316de3effbcd1acf1e309182a2deb1c05/src/vrcore/vrpathregistry_public.cpp)
+で登録ファイルを `.tmp` 内に隔離し，実際の `vrpathreg` で登録・解除・冪等性・他ドライバ保持を確認する．
+既存の登録ファイルは変更せず，SteamVR も起動しない．GUI 指定時は対話デスクトップが必要．
+
 ## CI（GitHub Actions，windows-latest）
 
 - ドライバ: CMake 構成・ビルド・ctest．

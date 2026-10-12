@@ -10,6 +10,7 @@ pub mod control;
 mod control_client;
 pub mod driver_client;
 pub mod engine;
+pub mod installation;
 pub mod logging;
 pub mod osc;
 pub mod presets;

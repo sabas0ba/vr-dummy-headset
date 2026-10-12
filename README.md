@@ -77,6 +77,22 @@ cargo test --workspace
 
 ## SteamVR への登録
 
+GUI の **Driver registration** に登録状態と **Register / Unregister / Refresh** ボタンを表示する．
+**Driver folder** に `driver.vrdrivermanifest` を含むフォルダを指定する．状態は定期更新され，
+CUI から変更した登録も反映される．登録状態と実行中のドライバへの接続状態は別表示．
+
+GUI を起動せず，CUI だけで登録・解除することもできる．リポジトリのルートから実行する例：
+
+```powershell
+.\feeder\target\release\vrdummy-cli.exe driver status --json
+.\feeder\target\release\vrdummy-cli.exe driver register --path driver/build/msvc-x64/vrdummy --json
+.\feeder\target\release\vrdummy-cli.exe driver unregister --json
+```
+
+登録・解除後は SteamVR を起動または再起動して反映する．アプリによる自動再起動は行わない．
+登録済みへの再登録，未登録への解除は変更なしの成功として扱う．
+既存の PowerShell スクリプトも使用できる：
+
 ```powershell
 .\scripts\install_driver.ps1     # 登録
 .\scripts\uninstall_driver.ps1   # 解除

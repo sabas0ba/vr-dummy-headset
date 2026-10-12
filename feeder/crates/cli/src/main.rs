@@ -18,6 +18,7 @@ use std::time::{Duration, Instant};
 
 use vrdummy_core::control::{self, ControlServer, SharedEngine};
 use vrdummy_core::engine::Reply;
+use vrdummy_core::installation::{self, Action, Options};
 use vrdummy_core::{Config, Engine, logging, scenario};
 
 const USAGE: &str = "\
@@ -32,6 +33,9 @@ subcommands:
            send one command to a running instance and print the reply
   status   [--json] [--timeout-ms <ms>]
            query the running GUI or CLI; --json returns every device
+  driver   <status|register|unregister> [--path <driver-dir>]
+           [--steamvr-dir <dir>] [--json] [--timeout-ms <ms>]
+           manage SteamVR registration without requiring a running feeder
 
 control options may also precede the subcommand; timeout defaults to 2000 ms
 JSON output: one object on stdout, diagnostics on stderr
@@ -49,6 +53,10 @@ struct GlobalOptions {
 }
 
 enum Subcommand {
+    Driver {
+        action: Action,
+        options: Options,
+    },
     Run {
         record: Option<PathBuf>,
         control: bool,
@@ -98,6 +106,32 @@ fn parse_args(argv: Vec<String>) -> Result<(GlobalOptions, Subcommand), String> 
         }
     };
     let sub = match sub.as_str() {
+        "driver" => {
+            let action = match args.next().as_deref() {
+                Some("status") => Action::Status,
+                Some("register") => Action::Register,
+                Some("unregister") => Action::Unregister,
+                _ => return Err("driver: expected status, register or unregister".to_owned()),
+            };
+            let mut options = Options::default();
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--path" => {
+                        options.driver_dir = Some(PathBuf::from(take_value(&mut args, "--path")?));
+                    }
+                    "--steamvr-dir" => {
+                        options.steamvr_dir =
+                            Some(PathBuf::from(take_value(&mut args, "--steamvr-dir")?));
+                    }
+                    "--json" => global.json = true,
+                    "--timeout-ms" => {
+                        global.timeout = parse_timeout(&take_value(&mut args, "--timeout-ms")?)?;
+                    }
+                    _ => return Err(format!("driver: unknown option {arg}")),
+                }
+            }
+            Subcommand::Driver { action, options }
+        }
         "run" => {
             let mut record = None;
             let mut control = true;
@@ -148,8 +182,8 @@ fn parse_args(argv: Vec<String>) -> Result<(GlobalOptions, Subcommand), String> 
         }
         other => return Err(format!("unknown subcommand: {other}")),
     };
-    if global.json && !matches!(sub, Subcommand::Set { .. }) {
-        return Err("--json is supported by status and set".to_owned());
+    if global.json && !matches!(sub, Subcommand::Set { .. } | Subcommand::Driver { .. }) {
+        return Err("--json is supported by status, set and driver".to_owned());
     }
     Ok((global, sub))
 }
@@ -430,6 +464,35 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    if let Subcommand::Driver { action, options } = &sub {
+        return match installation::execute(*action, options, global.timeout) {
+            Ok(status) => {
+                if global.json {
+                    let json = match status.to_json() {
+                        Ok(json) => json,
+                        Err(error) => {
+                            return report_error(true, "driver_management_error", &error, 1);
+                        }
+                    };
+                    println!("{{\"schema_version\":1,\"ok\":true,\"result\":{json}}}");
+                } else {
+                    println!(
+                        "registered={} path={} package_valid={} tool_available={} changed={}",
+                        status.registered,
+                        status.driver_dir.display(),
+                        status.package_valid,
+                        status.tool_available,
+                        status.changed
+                    );
+                    if status.restart_required {
+                        println!("Start or restart SteamVR to apply the registration change.");
+                    }
+                }
+                ExitCode::SUCCESS
+            }
+            Err(error) => report_error(global.json, "driver_management_error", &error, 1),
+        };
+    }
     let config = match load_config(&global) {
         Ok(c) => c,
         Err(e) => {
@@ -451,7 +514,7 @@ fn main() -> ExitCode {
             stdin,
         } => run(config, record.as_deref(), control, stdin),
         Subcommand::Scenario { file, record } => run_scenario(config, &file, record.as_deref()),
-        Subcommand::Set { .. } => unreachable!("control commands return above"),
+        Subcommand::Set { .. } | Subcommand::Driver { .. } => unreachable!("commands return above"),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -536,6 +599,43 @@ mod tests {
         assert!(parse_args(argv("fly")).is_err());
         assert!(parse_args(argv("--config")).is_err());
         assert!(parse_args(argv("set")).is_err());
+    }
+
+    #[test]
+    fn parses_driver_management_without_a_running_feeder() {
+        let (global, sub) = parse_args(
+            vec![
+                "driver",
+                "register",
+                "--path",
+                "C:/driver with spaces",
+                "--json",
+                "--timeout-ms",
+                "5000",
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+        )
+        .unwrap();
+        assert!(global.json);
+        assert_eq!(global.timeout, Duration::from_secs(5));
+        let Subcommand::Driver { action, options } = sub else {
+            panic!("driver command")
+        };
+        assert_eq!(action, Action::Register);
+        assert_eq!(
+            options.driver_dir,
+            Some(PathBuf::from("C:/driver with spaces"))
+        );
+        for invalid in [
+            "driver",
+            "driver delete",
+            "driver status --unknown",
+            "driver register --path",
+        ] {
+            assert!(parse_args(argv(invalid)).is_err());
+        }
     }
 
     #[test]
