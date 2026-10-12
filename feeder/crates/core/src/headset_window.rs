@@ -357,14 +357,19 @@ mod native {
         }
     }
     fn compositor(hwnd: Handle) -> Option<u32> {
+        let mut pid = 0;
+        unsafe {
+            GetWindowThreadProcessId(hwnd, &raw mut pid);
+        }
+        // GetWindowTextW sends WM_GETTEXT for our own windows. Skip them to
+        // avoid re-entering winit while egui holds its UI state lock.
+        if pid == std::process::id() {
+            return None;
+        }
         let mut title = [0u16; 256];
         let n = unsafe { GetWindowTextW(hwnd, title.as_mut_ptr(), 256) };
         if n <= 0 || String::from_utf16_lossy(&title[..n as usize]) != "Headset Window" {
             return None;
-        }
-        let mut pid = 0;
-        unsafe {
-            GetWindowThreadProcessId(hwnd, &raw mut pid);
         }
         let process = unsafe { OpenProcess(0x1000, 0, pid) };
         if process.is_null() {

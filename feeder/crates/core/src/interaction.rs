@@ -178,10 +178,13 @@ mod tests {
         assert_eq!(e.rig().arm, [0.30, 0.26]);
         assert_eq!(e.world.inputs[&(1, c::TRIGGER_VALUE)], 0.5);
         assert!(e.execute_line("edit undo").is_err());
+        e.execute_line("fk ctrl-l 0 30 60").unwrap();
         e.execute_line("edit checkpoint").unwrap();
         e.world = World::new(0);
         e.execute_line("edit undo").unwrap();
         assert!(e.world.pose(3).is_none());
+        assert!(e.rig().chains.is_empty());
+        assert!(e.rig().fk_angles.is_empty());
     }
     #[test]
     fn invalid_control_values_are_rejected_without_mutation() {
@@ -511,6 +514,15 @@ impl Engine {
                     }
                 }
                 self.interaction.rig = rig;
+                let world = &self.world;
+                self.interaction
+                    .rig
+                    .chains
+                    .retain(|id, _| world.pose(3).is_some() && world.pose(*id).is_some());
+                self.interaction
+                    .rig
+                    .fk_angles
+                    .retain(|id, _| world.pose(3).is_some() && world.pose(*id).is_some());
                 self.send_all_poses()?;
             }
         }

@@ -68,7 +68,16 @@ function Button([string]$Name) {
     $condition = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, $Name)
     $element = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
     if ($null -eq $element) { throw "GUI element unavailable: $Name" }
-    $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $pattern = $null
+    if ($element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
+        $pattern.Invoke()
+    } elseif ($element.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) {
+        $pattern.Select()
+    } elseif ($element.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) {
+        $pattern.Toggle()
+    } else {
+        throw "Unsupported automation pattern: $Name"
+    }
 }
 function Capture {
     [DesktopTestWindow]::ShowWindow($server.MainWindowHandle, 9) | Out-Null
@@ -128,12 +137,14 @@ try {
     Start-Sleep -Milliseconds 200
     if ($null -ne (State).interaction.owner) { throw 'Focus return unexpectedly resumed capture' }
     Button 'Headset Window placement'
+    Start-Sleep -Milliseconds 200
+    State | Out-Null
     Button 'ctrl-l'
     & $Cli --config $config set input ctrl-l joystick/x 0.6 | Out-Null
     & $Cli --config $config set input ctrl-l joystick/y 0.4 | Out-Null
     & $Cli --config $config set fk ctrl-l 15 30 60 | Out-Null
     Start-Sleep -Milliseconds 300
-    & (Join-Path $repo 'scripts/capture_window.ps1') -ProcessName 'vrdummy-gui' -Out (Join-Path $testDir 'gui.png')
+    & (Join-Path $repo 'scripts/capture_window.ps1') -ProcessName 'vrdummy-gui' -Out (Join-Path $testDir 'gui.png') -ScreenCopy
     Write-Host "PASS: GUI capture, W, Esc, focus loss and no automatic resume ($testDir)"
 } finally {
     if ($null -ne $server -and -not $server.HasExited) {

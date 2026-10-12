@@ -393,6 +393,9 @@ impl View3d {
             result.selected = Some(id);
             result.commands.push("edit checkpoint".to_owned());
         }
+        if !ui.is_enabled() || !ui.input(|i| i.raw.focused) {
+            self.drag = None;
+        }
         if let Some(drag) = &self.drag {
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 result.commands.push("edit undo".to_owned());
