@@ -10,6 +10,26 @@ SteamVR から認識される仮想デバイス一式（HMD，左右コントロ
 - 試験方針: [docs/testing.md](docs/testing.md)
 - 統合試験と E2E: [scripts/integration/README.md](scripts/integration/README.md)
 
+## GUI の画面構成
+
+![vrdummy feeder の GUI：上部にデスクトップ操作とウィンドウ位置設定，左にデバイスとスティック入力，中央に 3D 姿勢編集，右に表示設定とコンソール](docs/images/feeder-gui.png)
+
+左コントローラを選択し，FK による腕の編集結果とスティック入力を表示した例．
+画像はドライバ未接続の検証画面であり，左上の `driver disconnected` は接続状態を示す．
+GUI 内の編集と入力表示は未接続でも利用できるが，SteamVR への反映にはドライバ接続が必要．
+
+| 領域 | 主な操作 |
+|---|---|
+| 上部：Desktop controls | Walk / Rig の切り替え，キーボード・マウス操作の開始と解除 |
+| 上部：Headset Window placement | SteamVR の Headset Window の移動，モニタ選択，位置の保存 |
+| 上部：Driver registration | 展開してドライバの登録状態を確認し，登録・解除 |
+| 左：Devices / Edit | デバイス選択，位置・角度，ボタン・トリガー・グリップ・円形スティックの編集 |
+| 中央：3D ビュー | デバイスのドラッグ移動・回転，手足の IK 編集，姿勢編集の取り消し |
+| 右：Display / Recording / Console | 表示パラメータの設定，操作の記録，制御コマンドの実行 |
+
+起動方法とキー操作は [GUI と CLI の使い方](#gui-と-cli-の使い方) を参照．
+GUI を表示したまま CUI から操作でき，変更は同じ画面に反映される．
+
 ## 実機 HMD（PICO 4 など）と併用するときの注意
 
 ダミードライバは常時「HMD あり」を宣言するため，登録したまま実機の HMD を使うと HMD が
